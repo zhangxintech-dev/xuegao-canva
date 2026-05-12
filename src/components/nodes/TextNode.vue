@@ -637,6 +637,8 @@ const handlePolish = async () => {
     if (result) {
       content.value = result
       updateNode(props.id, { content: result })
+      setEditableContent(result)
+      nextTick(() => convertTextMentionsToChips())
       window.$message?.success('提示词已润色')
     }
   } catch (err) {

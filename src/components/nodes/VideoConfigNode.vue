@@ -151,7 +151,7 @@ import { useVideoGeneration } from '../../hooks'
 import { updateNode, removeNode, duplicateNode, addNode, addEdge, nodes, edges } from '../../stores/canvas'
 import NodeHandleMenu from './NodeHandleMenu.vue'
 import { useModelStore } from '../../stores/pinia'
-import { getModelRatioOptions, getModelDurationOptions, getModelConfig, DEFAULT_VIDEO_MODEL } from '../../stores/models'
+import { VIDEO_RATIO_OPTIONS, VIDEO_DURATION_OPTIONS, DEFAULT_VIDEO_MODEL } from '../../stores/models'
 
 // 使用 Pinia store 获取模型选项（根据渠道过滤）
 const modelStore = useModelStore()
@@ -217,7 +217,7 @@ const imagesByRole = computed(() => {
 })
 
 // Get current model config | 获取当前模型配置
-const currentModelConfig = computed(() => getModelConfig(localModel.value))
+const currentModelConfig = computed(() => modelStore.getVideoModel(localModel.value))
 
 // Model options from Pinia store (filtered by provider) | 从 Pinia store 获取模型选项（根据渠道过滤）
 const modelOptions = computed(() => modelStore.allVideoModelOptions)
@@ -235,19 +235,21 @@ const displayModelName = computed(() => {
 
 // Ratio options based on model | 基于模型的比例选项
 const ratioOptions = computed(() => {
-  return getModelRatioOptions(localModel.value)
+  const ratios = currentModelConfig.value?.ratios
+  if (!ratios?.length) return VIDEO_RATIO_OPTIONS
+  return ratios.map(ratio => ({ label: ratio, key: ratio }))
 })
 
 // Duration options based on model | 基于模型的时长选项
 const durationOptions = computed(() => {
-  return getModelDurationOptions(localModel.value)
+  return currentModelConfig.value?.durs || VIDEO_DURATION_OPTIONS
 })
 
 // Handle model selection | 处理模型选择
 const handleModelSelect = (key) => {
   localModel.value = key
   // Update ratio and duration to model's default | 更新为模型默认比例和时长
-  const config = getModelConfig(key)
+  const config = modelStore.getVideoModel(key)
   const updates = { model: key }
   if (config?.defaultParams?.ratio) {
     localRatio.value = config.defaultParams.ratio
@@ -343,6 +345,12 @@ const handleGenerate = async () => {
 
   if (!isConfigured.value) {
     window.$message?.warning('请先配置 API Key')
+    isGenerating.value = false
+    return
+  }
+
+  if (!localModel.value) {
+    window.$message?.warning('请先选择视频模型')
     isGenerating.value = false
     return
   }

@@ -72,10 +72,15 @@ instance.interceptors.response.use(
   },
   (error) => {
     const { response } = error
+    let message = error.message
     
     if (response) {
       const { status, data } = response
-      const message = data?.message || data?.error?.message || error.message
+      message = data?.message ||
+        data?.error?.message ||
+        data?.error ||
+        data?.msg ||
+        error.message
       
       if (status === 401) {
         window.$message?.error('API Key 无效或已过期')
@@ -88,6 +93,8 @@ instance.interceptors.response.use(
       window.$message?.error(error.message || '网络错误')
     }
     
+    error.message = message || error.message
+    error.backendData = response?.data
     return Promise.reject(error)
   }
 )

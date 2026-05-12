@@ -222,7 +222,7 @@ export const useModelStore = defineStore('model', () => {
       label: m.label || m.key,
       key: m.key,
       isCustom: true,
-      ratios: ['16x9', '9:16', '1:1'],
+      ratios: ['16:9', '9:16', '1:1'],
       durs: [{ label: '5 秒', key: 5 }, { label: '10 秒', key: 10 }],
       defaultParams: { ratio: '16:9', duration: 5 }
     })),
@@ -231,7 +231,7 @@ export const useModelStore = defineStore('model', () => {
       label: m.label || m.key,
       key: m.key,
       isCustom: true,
-      ratios: ['16x9', '9:16', '1:1'],
+      ratios: ['16:9', '9:16', '1:1'],
       durs: [{ label: '5 秒', key: 5 }, { label: '10 秒', key: 10 }],
       defaultParams: { ratio: '16:9', duration: 5 },
       provider: [currentProvider.value]
@@ -420,7 +420,7 @@ export const useModelStore = defineStore('model', () => {
         label: m.label || m.key,
         key: m.key,
         isCustom: true,
-        ratios: ['16x9', '9:16', '1:1'],
+        ratios: ['16:9', '9:16', '1:1'],
         durs: [{ label: '5 秒', key: 5 }, { label: '10 秒', key: 10 }],
         defaultParams: { ratio: '16:9', duration: 5 },
         provider: [provider]
@@ -433,31 +433,34 @@ export const useModelStore = defineStore('model', () => {
 
   const addCustomChatModelByProvider = (modelKey, provider, label = '') => {
     if (!modelKey) return false
-    if (!customChatModelsByProvider.value[provider]) {
-      customChatModelsByProvider.value[provider] = []
+    const models = customChatModelsByProvider.value[provider] || []
+    if (models.some(m => m.key === modelKey)) return false
+    customChatModelsByProvider.value = {
+      ...customChatModelsByProvider.value,
+      [provider]: [...models, { key: modelKey, label: label || modelKey }]
     }
-    if (customChatModelsByProvider.value[provider].some(m => m.key === modelKey)) return false
-    customChatModelsByProvider.value[provider].push({ key: modelKey, label: label || modelKey })
     return true
   }
 
   const addCustomImageModelByProvider = (modelKey, provider, label = '') => {
     if (!modelKey) return false
-    if (!customImageModelsByProvider.value[provider]) {
-      customImageModelsByProvider.value[provider] = []
+    const models = customImageModelsByProvider.value[provider] || []
+    if (models.some(m => m.key === modelKey)) return false
+    customImageModelsByProvider.value = {
+      ...customImageModelsByProvider.value,
+      [provider]: [...models, { key: modelKey, label: label || modelKey }]
     }
-    if (customImageModelsByProvider.value[provider].some(m => m.key === modelKey)) return false
-    customImageModelsByProvider.value[provider].push({ key: modelKey, label: label || modelKey })
     return true
   }
 
   const addCustomVideoModelByProvider = (modelKey, provider, label = '') => {
     if (!modelKey) return false
-    if (!customVideoModelsByProvider.value[provider]) {
-      customVideoModelsByProvider.value[provider] = []
+    const models = customVideoModelsByProvider.value[provider] || []
+    if (models.some(m => m.key === modelKey)) return false
+    customVideoModelsByProvider.value = {
+      ...customVideoModelsByProvider.value,
+      [provider]: [...models, { key: modelKey, label: label || modelKey }]
     }
-    if (customVideoModelsByProvider.value[provider].some(m => m.key === modelKey)) return false
-    customVideoModelsByProvider.value[provider].push({ key: modelKey, label: label || modelKey })
     return true
   }
 

@@ -41,9 +41,10 @@ export const PROVIDERS = {
       },
       video: (params) => {
         const model = params.model || ''
+        const modelKey = model.toLowerCase()
 
         // Seedance 模型 - 使用 content 数组格式
-        if (model.includes('seedance')) {
+        if (modelKey.includes('seedance')) {
           const content = []
 
           // 构建完整参数文本
@@ -84,15 +85,20 @@ export const PROVIDERS = {
             text: textPrompt
           })
 
-          // 添加参考图（如果有）
-          if (params.first_frame_image) {
+          const imageUrls = [
+            params.first_frame_image,
+            ...(params.images || [])
+          ].filter(Boolean)
+
+          // 添加首帧/参考图（如果有）
+          imageUrls.forEach((url) => {
             content.push({
               type: 'image_url',
               image_url: {
-                url: params.first_frame_image
+                url
               }
             })
-          }
+          })
 
           const adapted = {
             model: model,
@@ -104,7 +110,7 @@ export const PROVIDERS = {
         }
 
         // Kling 模型 - 使用 kling 特定格式
-        if (model.includes('kling')) {
+        if (modelKey.includes('kling')) {
           // 将 ratio 转换为 aspect_ratio 格式
           const ratioMap = {
             '16:9': '16:9',
@@ -119,7 +125,7 @@ export const PROVIDERS = {
             mode: 'std',
             prompt: params.prompt || '',
             aspect_ratio: ratioMap[params.size] || '16:9',
-            duration: params.seconds || 5,
+            duration: String(params.seconds || 5),
             negative_prompt: '',
             cfg_scale: 0.5
           }
@@ -139,8 +145,9 @@ export const PROVIDERS = {
         }
         if (params.first_frame_image) adapted.first_frame_image = params.first_frame_image
         if (params.last_frame_image) adapted.last_frame_image = params.last_frame_image
+        if (params.images?.length) adapted.images = params.images
         if (params.size) adapted.size = params.size
-        if (params.seconds) adapted.seconds = params.seconds
+        if (params.seconds) adapted.seconds = String(params.seconds)
 
         return adapted
       }
@@ -210,8 +217,9 @@ export const PROVIDERS = {
         }
         if (params.first_frame_image) adapted.first_frame_image = params.first_frame_image
         if (params.last_frame_image) adapted.last_frame_image = params.last_frame_image
+        if (params.images?.length) adapted.images = params.images
         if (params.size) adapted.size = params.size
-        if (params.seconds) adapted.seconds = params.seconds
+        if (params.seconds) adapted.seconds = String(params.seconds)
         return adapted
       }
     },

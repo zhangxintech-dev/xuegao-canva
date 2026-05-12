@@ -90,8 +90,21 @@ export const useChat = (options = {}) => {
       ]
 
       // 适配请求参数
+      const requestedModel = options.model
+      const isRequestedAvailable = requestedModel &&
+        modelStore.availableChatModels.some(model => model.key === requestedModel)
+      const chatModel = (isRequestedAvailable ? requestedModel : '') ||
+        modelStore.selectedChatModel ||
+        modelStore.availableChatModels[0]?.key ||
+        requestedModel ||
+        ''
+
+      if (!chatModel) {
+        throw new Error('请先添加或扫描问答模型')
+      }
+
       const adaptedParams = adaptRequest('chat', {
-        model: options.model || 'gpt-4o-mini',
+        model: chatModel,
         messages: msgList
       })
 
@@ -238,8 +251,9 @@ export const useVideoGeneration = () => {
     // Add optional params | 添加可选参数
     if (params.first_frame_image) requestData.first_frame_image = params.first_frame_image
     if (params.last_frame_image) requestData.last_frame_image = params.last_frame_image
+    if (params.images?.length) requestData.images = params.images
     if (params.ratio) requestData.size = params.ratio
-    if (params.dur) requestData.seconds = params.dur
+    if (params.dur) requestData.seconds = String(params.dur)
 
     // 适配请求参数
     const adaptedParams = adaptRequest('video', requestData)
@@ -262,7 +276,12 @@ export const useVideoGeneration = () => {
     }
 
     // Get task ID | 获取任务 ID
-    const newTaskId = task.id || task.task_id || task.taskId
+    const newTaskId = task.id ||
+      task.task_id ||
+      task.taskId ||
+      task.data?.id ||
+      task.data?.task_id ||
+      task.data?.taskId
     if (!newTaskId) {
       throw new Error('未获取到任务 ID')
     }
@@ -294,14 +313,22 @@ export const useVideoGeneration = () => {
       const adaptedResult = adaptResponse('video', result)
 
       // Check for completion | 检查是否完成
-      if (result.status === 'completed' || result.status === 'succeeded' || result.data) {
-        const videoUrl = adaptedResult.url || result.data?.url || result.data?.[0]?.url || result.url || result.content?.video_url || result.video_url
+      const taskStatus = result.status || result.data?.status || result.task_status || result.data?.task_status
+      const videoUrl = adaptedResult.url ||
+        result.data?.url ||
+        result.data?.[0]?.url ||
+        result.url ||
+        result.content?.video_url ||
+        result.data?.content?.video_url ||
+        result.video_url
+
+      if (taskStatus === 'completed' || taskStatus === 'succeeded' || videoUrl) {
         return { ...adaptedResult, url: videoUrl,  }
       }
 
       // Check for failure | 检查是否失败
-      if (result.status === 'failed' || result.status === 'error') {
-        throw new Error(result.error?.message || result.message || '视频生成失败')
+      if (taskStatus === 'failed' || taskStatus === 'error') {
+        throw new Error(result.error?.message || result.data?.error?.message || result.message || '视频生成失败')
       }
 
       // Wait before next poll | 等待下次轮询

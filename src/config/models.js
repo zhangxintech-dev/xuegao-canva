@@ -46,67 +46,16 @@ export const BANANA_SIZE_OPTIONS = [
 ]
 
 // Image generation models | 图片生成模型
-export const IMAGE_MODELS = [
-    {
-        label: 'Nano Banana 2',
-        key: 'nano-banana-2',
-        provider: ['xuegao'], // 雪糕渠道
-        sizes: BANANA_SIZE_OPTIONS.map(s => s.key),
-        // qualities: SEEDREAM_QUALITY_OPTIONS,
-        // getSizesByQuality: (quality) => quality === '4k' ? SEEDREAM_4K_SIZE_OPTIONS : SEEDREAM_SIZE_OPTIONS,
-        defaultParams: {
-            size: '1x1',
-            quality: 'standard',
-            style: 'vivid'
-        }
-    },
-    {
-        label: 'Nano Banana Pro',
-        key: 'nano-banana-pro',
-        provider: ['xuegao'], // 雪糕渠道
-        sizes: BANANA_SIZE_OPTIONS.map(s => s.key),
-        // qualities: SEEDREAM_QUALITY_OPTIONS,
-        // getSizesByQuality: (quality) => quality === '4k' ? SEEDREAM_4K_SIZE_OPTIONS : SEEDREAM_SIZE_OPTIONS,
-        defaultParams: {
-            size: '1x1',
-            quality: 'standard',
-            style: 'vivid'
-        }
-    },
-    {
-        label: '豆包 Seedream 4.5',
-        key: 'doubao-seedream-4-5-251128',
-        provider: ['xuegao'], // 雪糕渠道
-        sizes: SEEDREAM_SIZE_OPTIONS.map(s => s.key),
-        qualities: SEEDREAM_QUALITY_OPTIONS,
-        getSizesByQuality: (quality) => quality === '4k' ? SEEDREAM_4K_SIZE_OPTIONS : SEEDREAM_SIZE_OPTIONS,
-        defaultParams: {
-            size: '2048x2048',
-            quality: 'standard',
-            style: 'vivid'
-        }
-    },
-    {
-        label: 'Nano Banana',
-        key: 'nano-banana',
-        provider: ['xuegao'], // 雪糕渠道
-        tips: '尺寸写在提示词中: 尺寸 9:16',
-        sizes: [],
-        defaultParams: {
-            quality: 'standard',
-            style: 'vivid'
-        }
-    },
-
-]
+// Built-in model names are intentionally empty; users add their own models in API settings.
+export const IMAGE_MODELS = []
 
 // Video ratio options | 视频比例选项
 export const VIDEO_RATIO_LIST = [
-    { label: '16:9 (横版)', key: '16x9' },
-    { label: '4:3', key: '4x3' },
-    { label: '1:1 (方形)', key: '1x1' },
-    { label: '3:4', key: '3x4' },
-    { label: '9:16 (竖版)', key: '9x16' }
+    { label: '16:9 (横版)', key: '16:9' },
+    { label: '4:3', key: '4:3' },
+    { label: '1:1 (方形)', key: '1:1' },
+    { label: '3:4', key: '3:4' },
+    { label: '9:16 (竖版)', key: '9:16' }
 ]
 
 // Video resolution options for Seedance | Seedance 分辨率选项
@@ -117,114 +66,12 @@ export const SEEDANCE_RESOLUTION_OPTIONS = [
 ]
 
 // Video generation models | 视频生成模型
-export const VIDEO_MODELS = [
-     // Seedance 模型 - 1.5 Pro
-    {
-        label: 'Seedance 1.5 Pro (图文视频)',
-        key: 'doubao-seedance-1-5-pro-251215',
-        provider: ['xuegao'],
-        type: 't2v+i2v',
-        ratios: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9'],
-        durs: [{ label: '5 秒', key: 5 }, { label: '10 秒', key: 10 }],
-        resolutions: ['480p', '720p', '1080p'],
-        defaultResolution: '1080p',
-        defaultParams: { ratio: '16:9', duration: 10, resolution: '1080p' }
-    },
-    // Seedance 模型 - 文生视频
-    {
-        label: 'Seedance 1.0 Lite (文生视频)',
-        key: 'doubao-seedance-1-0-lite-t2v-250428',
-        provider: ['xuegao'],
-        type: 't2v', // 文生视频
-        ratios: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9'],
-        durs: [{ label: '5 秒', key: 5 }, { label: '10 秒', key: 10 }],
-        resolutions: ['480p', '720p', '1080p'],
-        defaultResolution: '720p',
-        defaultParams: { ratio: '16:9', duration: 5, resolution: '720p' }
-    },
-    // Seedance 模型 - 图生视频
-    {
-        label: 'Seedance 1.0 Lite (图生视频)',
-        key: 'doubao-seedance-1-0-lite-i2v-250428',
-        provider: ['xuegao'],
-        type: 'i2v', // 图生视频
-        ratios: ['16:9'],
-        durs: [{ label: '5 秒', key: 5 }, { label: '10 秒', key: 10 }],
-        resolutions: ['480p', '720p', '1080p'],
-        defaultResolution: '720p',
-        defaultParams: { ratio: '16:9', duration: 5, resolution: '720p' }
-    },
-    // Seedance 模型 - 图文视频 Pro
-    {
-        label: 'Seedance 1.0 Pro (图文视频)',
-        key: 'doubao-seedance-1-0-pro-250528',
-        provider: ['xuegao'],
-        type: 't2v+i2v', // 图文视频
-        ratios: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9', '16:9'],
-        durs: [{ label: '5 秒', key: 5 }, { label: '10 秒', key: 10 }],
-        resolutions: ['480p', '720p', '1080p'],
-        defaultResolution: '1080p',
-        defaultParams: { ratio: '16:9', duration: 5, resolution: '1080p' }
-    },
-   
-    // Seedance 模型 - 1.0 Pro Fast
-    {
-        label: 'Seedance 1.0 Pro Fast (图文视频)',
-        key: 'doubao-seedance-1-0-pro-fast-251015',
-        provider: ['xuegao'],
-        type: 't2v+i2v',
-        ratios: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9'],
-        durs: [{ label: '5 秒', key: 5 }, { label: '10 秒', key: 10 }],
-        resolutions: ['480p', '720p', '1080p'],
-        defaultResolution: '1080p',
-        defaultParams: { ratio: '16:9', duration: 5, resolution: '1080p' }
-    },
-    // 可灵 Kling
-    // {
-    //     label: '可灵 Kling v2.5-turbo',
-    //     key: 'kling-v2-1',
-    //     provider: ['xuegao'], // 仅雪糕渠道
-    //     ratios: VIDEO_RATIO_LIST.map(s => s.key),
-    //     durs: [{ label: '5 秒', key: 5 }, { label: '10 秒', key: 10 }],
-    //     defaultParams: { ratio: '9:16', duration: 10 }
-    // },
-    // {
-    //     label: 'runway/gen4-turbo',
-    //     key: 'runway/gen4-turbo',
-    //     ratios: VIDEO_RATIO_LIST.map(s => s.key),
-    //     durs: [{ label: '5 秒', key: 5 }, { label: '10 秒', key: 10 }],
-    //     defaultParams: { ratio: '16:9', duration: 5 }
-    // },
-    // {
-    //     label: '可灵视频 O1',
-    //     key: 'kling-video-o1',
-    //     ratios: VIDEO_RATIO_LIST.map(s => s.key),
-    //     durs: [{ label: '5 秒', key: 5 }, { label: '10 秒', key: 10 }],
-    //     defaultParams: { ratio: '16:9', duration: 5 }
-    // },
-    // {
-    //     label: 'viduq2-pro_720p', key: 'viduq2-pro_720p',
-    //     ratios: VIDEO_RATIO_LIST.map(s => s.key),
-    //     durs: [{ label: '5 秒', key: 5 }, { label: '10 秒', key: 10 }],
-    //     defaultParams: { ratio: '16:9', duration: 5 }
-    // },
-    // {
-    //     label: 'Sora 2', key: 'sora-2',
-    //     ratios: VIDEO_RATIO_LIST.map(s => s.key),
-    //     durs: [{ label: '5 秒', key: 5 }, { label: '10 秒', key: 10 }],
-    //     defaultParams: { ratio: '16:9', duration: 5 }
-    // }
-]
+// Built-in model names are intentionally empty; users add their own models in API settings.
+export const VIDEO_MODELS = []
 
 // Chat/LLM models | 对话模型
-export const CHAT_MODELS = [
-    { label: 'GPT-4o Mini', key: 'gpt-4o-mini', provider: ['openai'] },
-    { label: 'GPT-4o', key: 'gpt-4o', provider: ['openai'] },
-    { label: 'GPT-5.2', key: 'gpt-5.2', provider: ['openai'] },
-    { label: 'DeepSeek Chat', key: 'deepseek-chat', provider: ['openai', 'xuegao'] },
-    { label: '豆包 Seed Flash', key: 'doubao-seed-1-6-flash-250615', provider: ['xuegao'] },
-    { label: 'Gemini 3 Pro', key: 'gemini-3-pro', provider: ['openai'] }
-]
+// Built-in model names are intentionally empty; users add their own models in API settings.
+export const CHAT_MODELS = []
 
 // Image size options | 图片尺寸选项
 export const IMAGE_SIZE_OPTIONS = [
@@ -255,9 +102,9 @@ export const VIDEO_DURATION_OPTIONS = [
 ]
 
 // Default values | 默认值
-export const DEFAULT_IMAGE_MODEL = 'nano-banana-pro'
-export const DEFAULT_VIDEO_MODEL = 'doubao-seedance-1-5-pro-251215'
-export const DEFAULT_CHAT_MODEL = 'gpt-4o-mini'
+export const DEFAULT_IMAGE_MODEL = ''
+export const DEFAULT_VIDEO_MODEL = ''
+export const DEFAULT_CHAT_MODEL = ''
 export const DEFAULT_IMAGE_SIZE = '2048x2048'
 export const DEFAULT_VIDEO_RATIO = '16:9'
 export const DEFAULT_VIDEO_DURATION = 5

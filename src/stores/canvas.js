@@ -242,7 +242,7 @@ const getDefaultNodeData = (type) => {
       const imageModel = IMAGE_MODELS.find(m => m.key === DEFAULT_IMAGE_MODEL) || IMAGE_MODELS[0]
       return {
         prompt: '',
-        model: DEFAULT_IMAGE_MODEL,
+        model: DEFAULT_IMAGE_MODEL || imageModel?.key || '',
         size: imageModel?.defaultParams?.size || '1x1',
         quality: imageModel?.defaultParams?.quality || 'standard',
         label: '文生图'
@@ -254,7 +254,7 @@ const getDefaultNodeData = (type) => {
         prompt: '',
         ratio: videoModel?.defaultParams?.ratio || '16:9',
         duration: videoModel?.defaultParams?.duration || 5,
-        model: DEFAULT_VIDEO_MODEL,
+        model: DEFAULT_VIDEO_MODEL || videoModel?.key || '',
         label: '图生视频'
       }
     }
@@ -273,7 +273,7 @@ const getDefaultNodeData = (type) => {
     case 'llmConfig':
       return {
         systemPrompt: '',
-        model: DEFAULT_CHAT_MODEL,
+        model: DEFAULT_CHAT_MODEL || '',
         outputFormat: 'text',
         outputContent: '',
         label: 'LLM文本生成',
