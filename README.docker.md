@@ -2,17 +2,8 @@
 
 ## 快速开始
 
-### 方式一：从 Docker Hub 拉取
+### 方式一：
 
-```bash
-docker pull peigen666/xuegao-canvas:latest
-docker run -d -p 8080:80 --name xuegao-canvas peigen666/xuegao-canvas:latest
-```
-
-访问：http://localhost:8080/xuegao-canvas/
-
-
-### 方式二：本地构建
 
 ```bash
 # 1. 构建前端
@@ -62,19 +53,3 @@ docker run -d -p 3000:80 --name xuegao-canvas peigen666/xuegao-canvas:latest
 - Gzip 压缩：已启用
 - 静态资源缓存：1 年
 
-## 推送镜像
-
-```bash
-# 登录 Docker Hub
-docker login
-
-# 构建并推送
-docker build -t peigen666/xuegao-canvas:latest .
-docker push peigen666/xuegao-canvas:latest
-```
-
-## 注意事项
-
-1. 确保 `dist/` 目录已存在（先运行 `pnpm build`）
-2. 避免使用浏览器屏蔽的端口（如 6666、6667、6668）
-3. 访问路径需带 `/xuegao-canvas` 后缀

@@ -270,8 +270,7 @@ const sizeOptions = computed(() => {
 
 // Check if model has size options | 检查模型是否有尺寸选项
 const hasSizeOptions = computed(() => {
-  const config = getModelConfig(localModel.value)
-  return config?.sizes && config.sizes.length > 0
+  return sizeOptions.value && sizeOptions.value.length > 0
 })
 
 // Display size with label | 显示尺寸（带标签）
@@ -291,6 +290,8 @@ onMounted(() => {
     localModel.value = modelStore.selectedImageModel || availableModels[0]?.key || DEFAULT_IMAGE_MODEL
     updateNode(props.id, { model: localModel.value })
   }
+
+  normalizeGenerationOptions()
 })
 
 // 解析 textNode 内容中的 @ 引用，转换为简短引用（如 图 1）并收集图片
@@ -477,8 +478,11 @@ const handleModelSelect = (key) => {
   const config = getModelConfig(key)
 
   // 同步 Quality 到模型默认值
+  const newQualityOptions = getModelQualityOptions(key)
   if (config?.defaultParams?.quality) {
     localQuality.value = config.defaultParams.quality
+  } else if (newQualityOptions.length > 0) {
+    localQuality.value = newQualityOptions.find(o => o.key === 'medium')?.key || newQualityOptions[0].key
   }
 
   // 同步 Size 到模型默认值
@@ -486,8 +490,9 @@ const handleModelSelect = (key) => {
   let defaultSize = config?.defaultParams?.size
 
   if (!defaultSize && newSizeOptions.length > 0) {
-    // 备用逻辑：查找 2048 或最接近的尺寸
-    defaultSize = newSizeOptions.find(o => o.key === '2048x2048')?.key
+    // 备用逻辑：优先使用更通用的方图尺寸
+    defaultSize = newSizeOptions.find(o => o.key === '1024x1024')?.key
+      || newSizeOptions.find(o => o.key === '2048x2048')?.key
       || newSizeOptions.find(o => o.key.includes('1024'))?.key
       || newSizeOptions[0].key
   }
@@ -525,6 +530,20 @@ const handleSizeSelect = (size) => {
 // Update size from manual input | 更新手动输入的尺寸
 const updateSize = () => {
   updateNode(props.id, { size: localSize.value })
+}
+
+const normalizeGenerationOptions = () => {
+  const validSizes = getModelSizeOptions(localModel.value, localQuality.value)
+  if (validSizes.length > 0 && !validSizes.some(o => o.key === localSize.value)) {
+    localSize.value = validSizes.find(o => o.key === '1024x1024')?.key || validSizes[0].key
+    updateNode(props.id, { size: localSize.value })
+  }
+
+  const validQualities = getModelQualityOptions(localModel.value)
+  if (validQualities.length > 0 && !validQualities.some(o => o.key === localQuality.value)) {
+    localQuality.value = validQualities.find(o => o.key === 'medium')?.key || validQualities[0].key
+    updateNode(props.id, { quality: localQuality.value })
+  }
 }
 
 // Created image node ID | 创建的图片节点 ID
@@ -589,6 +608,8 @@ const handleGenerate = async (mode = 'auto') => {
     window.$message?.warning('请先配置 API Key')
     return
   }
+
+  normalizeGenerationOptions()
 
   let imageNodeId = null
   
@@ -735,13 +756,18 @@ watch(() => props.data?.model, (newModel) => {
     const config = getModelConfig(newModel)
 
     // 同步 Quality
+    const qualityOptions = getModelQualityOptions(newModel)
     if (config?.defaultParams?.quality) {
       localQuality.value = config.defaultParams.quality
+    } else if (qualityOptions.length > 0 && !qualityOptions.some(o => o.key === localQuality.value)) {
+      localQuality.value = qualityOptions.find(o => o.key === 'medium')?.key || qualityOptions[0].key
     }
 
     // 同步 Size
     if (config?.defaultParams?.size) {
       localSize.value = config.defaultParams.size
+    } else {
+      normalizeGenerationOptions()
     }
   }
 })

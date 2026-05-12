@@ -365,16 +365,27 @@ export const useModelStore = defineStore('model', () => {
 
   // ============ Methods: Get API Endpoints ============
 
+  const buildEndpointUrl = (baseUrl, endpoint) => {
+    const normalizedBase = (baseUrl || '').replace(/\/+$/, '')
+    let normalizedEndpoint = endpoint || ''
+
+    if (normalizedBase.endsWith('/v1') && normalizedEndpoint.startsWith('/v1/')) {
+      normalizedEndpoint = normalizedEndpoint.replace(/^\/v1/, '')
+    }
+
+    return `${normalizedBase}${normalizedEndpoint}`
+  }
+
   // 获取图片端点
   const getImageEndpoint = () => {
     const endpoint = providerConfig.value.endpoints?.image || '/images/generations'
-    return `${currentBaseUrl.value}${endpoint}`
+    return buildEndpointUrl(currentBaseUrl.value, endpoint)
   }
 
   // 获取视频生成端点
   const getVideoEndpoint = () => {
     const endpoint = providerConfig.value.endpoints?.video || '/videos'
-    return `${currentBaseUrl.value}${endpoint}`
+    return buildEndpointUrl(currentBaseUrl.value, endpoint)
   }
 
   // 获取视频任务查询端点
@@ -382,13 +393,13 @@ export const useModelStore = defineStore('model', () => {
     const config = providerConfig.value
     // 优先使用 videoQuery 端点，支持 {taskId} 占位符替换
     let endpoint = config.endpoints?.videoQuery || config.endpoints?.video || '/videos'
-    return `${currentBaseUrl.value}${endpoint}`
+    return buildEndpointUrl(currentBaseUrl.value, endpoint)
   }
 
   // 获取聊天端点（支持参考图片）
   const getChatEndpoint = () => {
     const endpoint = providerConfig.value?.endpoints?.chat || '/chat/completions'
-    return `${currentBaseUrl.value}${endpoint}`
+    return buildEndpointUrl(currentBaseUrl.value, endpoint)
   }
 
   // ============ Methods: Get Models By Provider (for ApiSettings) ============

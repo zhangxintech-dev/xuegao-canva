@@ -163,7 +163,7 @@ export const PROVIDERS = {
       image: (response) => {
         const data = response.data || response
         return (Array.isArray(data) ? data : [data]).map(item => ({
-          url: item.url || item.b64_json || '',
+          url: item.url || (item.b64_json ? `data:image/png;base64,${item.b64_json}` : ''),
           revisedPrompt: item.revised_prompt || ''
         }))
       },
@@ -234,7 +234,7 @@ export const PROVIDERS = {
       image: (response) => {
         const data = response.data || response
         return (Array.isArray(data) ? data : [data]).map(item => ({
-          url: item.url || item.b64_json || '',
+          url: item.url || (item.b64_json ? `data:image/png;base64,${item.b64_json}` : ''),
           revisedPrompt: item.revised_prompt || ''
         }))
       },

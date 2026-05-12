@@ -8,6 +8,7 @@ import {
   IMAGE_MODELS,
   VIDEO_MODELS,
   CHAT_MODELS,
+  IMAGE_SIZE_OPTIONS,
   SEEDREAM_SIZE_OPTIONS,
   SEEDREAM_4K_SIZE_OPTIONS,
   SEEDREAM_QUALITY_OPTIONS,
@@ -36,6 +37,21 @@ const getModelConfigHook = () => {
     return null
   }
 }
+
+const GPT_IMAGE_SIZE_OPTIONS = [
+  { label: '1024x1024', key: '1024x1024' },
+  { label: '1536x1024 (横版)', key: '1536x1024' },
+  { label: '1024x1536 (竖版)', key: '1024x1536' }
+]
+
+const GPT_IMAGE_QUALITY_OPTIONS = [
+  { label: '低', key: 'low' },
+  { label: '中', key: 'medium' },
+  { label: '高', key: 'high' }
+]
+
+const isGptImageModel = (modelKey = '') => /^gpt-image/i.test(modelKey)
+const isSeedreamImageModel = (modelKey = '') => /seedream/i.test(modelKey)
 
 /**
  * Initialize models (no-op for built-in) | 初始化模型
@@ -68,13 +84,17 @@ export const getModelConfig = (modelKey) => {
  */
 export const getModelSizeOptions = (modelKey, quality = 'standard') => {
   const model = IMAGE_MODELS.find(m => m.key === modelKey)
+
+  if (isGptImageModel(modelKey)) {
+    return GPT_IMAGE_SIZE_OPTIONS
+  }
   
   // If model has getSizesByQuality function, use it | 如果模型有 getSizesByQuality 函数，使用它
   if (model?.getSizesByQuality) {
     return model.getSizesByQuality(quality)
   }
   
-  if (!model?.sizes) return SEEDREAM_SIZE_OPTIONS
+  if (!model?.sizes) return isSeedreamImageModel(modelKey) ? SEEDREAM_SIZE_OPTIONS : IMAGE_SIZE_OPTIONS
   
   // Convert sizes array to dropdown options | 转换 sizes 数组为下拉选项
   const sizeOptions = quality === '4k' ? SEEDREAM_4K_SIZE_OPTIONS : SEEDREAM_SIZE_OPTIONS
@@ -89,6 +109,9 @@ export const getModelSizeOptions = (modelKey, quality = 'standard') => {
  */
 export const getModelQualityOptions = (modelKey) => {
   const model = IMAGE_MODELS.find(m => m.key === modelKey)
+  if (isGptImageModel(modelKey)) {
+    return GPT_IMAGE_QUALITY_OPTIONS
+  }
   return model?.qualities || []
 }
 
