@@ -18,6 +18,7 @@ const initialData = {
   projects: [],
   projectMembers: [],
   workflowVersions: [],
+  savedWorkflows: [],
   assets: [],
   generationTasks: [],
   quotaRecords: [],
@@ -170,6 +171,7 @@ const mapProject = (row) => ({
   teamId: row.team_id || '',
   name: row.name,
   thumbnail: row.thumbnail || '',
+  visibility: row.visibility || 'personal',
   canvasData: jsonValue(row.canvas_data, defaultCanvasData()),
   createdAt: toIso(row.created_at),
   updatedAt: toIso(row.updated_at)
@@ -186,6 +188,7 @@ const readPgDb = async () => {
     projects,
     projectMembers,
     workflowVersions,
+    savedWorkflows,
     assets,
     generationTasks,
     quotaRecords,
@@ -199,6 +202,7 @@ const readPgDb = async () => {
     pool.query('SELECT * FROM projects ORDER BY created_at ASC'),
     pool.query('SELECT * FROM project_members ORDER BY created_at ASC'),
     pool.query('SELECT * FROM workflow_versions ORDER BY created_at ASC'),
+    pool.query('SELECT * FROM saved_workflows ORDER BY created_at ASC'),
     pool.query('SELECT * FROM assets ORDER BY created_at ASC'),
     pool.query('SELECT * FROM generation_tasks ORDER BY created_at ASC'),
     pool.query('SELECT * FROM quota_records ORDER BY created_at ASC'),
@@ -237,6 +241,18 @@ const readPgDb = async () => {
       name: row.name,
       canvasData: jsonValue(row.canvas_data, {}),
       createdAt: toIso(row.created_at)
+    })),
+    savedWorkflows: savedWorkflows.rows.map(row => ({
+      id: row.id,
+      ownerId: row.owner_id,
+      name: row.name,
+      thumbnail: row.thumbnail || '',
+      visibility: row.visibility || 'personal',
+      nodes: jsonValue(row.workflow_data, {}).nodes || [],
+      edges: jsonValue(row.workflow_data, {}).edges || [],
+      viewport: jsonValue(row.workflow_data, {}).viewport || {},
+      createdAt: toIso(row.created_at),
+      updatedAt: toIso(row.updated_at)
     })),
     assets: assets.rows.map(row => ({
       id: row.id,
@@ -287,6 +303,9 @@ const readPgDb = async () => {
       queryEndpoint: row.query_endpoint || '',
       defaultParams: jsonValue(row.default_params, {}),
       enabled: row.enabled,
+      healthStatus: row.health_status || 'unchecked',
+      healthMessage: row.health_message || '',
+      healthCheckedAt: toIso(row.health_checked_at),
       createdAt: toIso(row.created_at),
       updatedAt: toIso(row.updated_at)
     })),
@@ -342,6 +361,7 @@ const writePgDb = async (data) => {
       DELETE FROM quota_records;
       DELETE FROM generation_tasks;
       DELETE FROM assets;
+      DELETE FROM saved_workflows;
       DELETE FROM workflow_versions;
       DELETE FROM project_members;
       DELETE FROM projects;
@@ -377,14 +397,15 @@ const writePgDb = async (data) => {
     `, data.teamMembers, row => [row.teamId, row.userId, row.role, row.createdAt])
 
     await insertRows(client, `
-      INSERT INTO projects (id, owner_id, team_id, name, thumbnail, canvas_data, created_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8)
+      INSERT INTO projects (id, owner_id, team_id, name, thumbnail, visibility, canvas_data, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)
     `, data.projects, row => [
       row.id,
       row.ownerId,
       row.teamId || null,
       row.name,
       row.thumbnail || '',
+      row.visibility || 'personal',
       JSON.stringify(row.canvasData || {}),
       row.createdAt,
       row.updatedAt
@@ -406,6 +427,24 @@ const writePgDb = async (data) => {
       row.name,
       JSON.stringify(row.canvasData || {}),
       row.createdAt
+    ])
+
+    await insertRows(client, `
+      INSERT INTO saved_workflows (id, owner_id, name, thumbnail, visibility, workflow_data, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8)
+    `, data.savedWorkflows, row => [
+      row.id,
+      row.ownerId,
+      row.name,
+      row.thumbnail || '',
+      row.visibility || 'personal',
+      JSON.stringify({
+        nodes: row.nodes || [],
+        edges: row.edges || [],
+        viewport: row.viewport || {}
+      }),
+      row.createdAt,
+      row.updatedAt
     ])
 
     await insertRows(client, `
@@ -451,8 +490,8 @@ const writePgDb = async (data) => {
     `, data.quotaRecords, row => [row.id, row.userId, row.taskId || null, row.amount, row.reason, row.createdAt])
 
     await insertRows(client, `
-      INSERT INTO model_configs (id, type, provider, model_key, display_name, base_url, api_key, endpoint, query_endpoint, default_params, enabled, created_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13)
+      INSERT INTO model_configs (id, type, provider, model_key, display_name, base_url, api_key, endpoint, query_endpoint, default_params, enabled, health_status, health_message, health_checked_at, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14,$15,$16)
     `, data.modelConfigs, row => [
       row.id,
       row.type,
@@ -465,6 +504,9 @@ const writePgDb = async (data) => {
       row.queryEndpoint || '',
       JSON.stringify(row.defaultParams || {}),
       row.enabled !== false,
+      row.healthStatus || 'unchecked',
+      row.healthMessage || '',
+      row.healthCheckedAt || null,
       row.createdAt,
       row.updatedAt
     ])

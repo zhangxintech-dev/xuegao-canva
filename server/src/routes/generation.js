@@ -162,6 +162,7 @@ const findEnabledModel = (db, type, modelKey = '') => {
   return db.modelConfigs.find(model =>
     model.type === type &&
     model.enabled !== false &&
+    model.healthStatus === 'healthy' &&
     (!modelKey || model.modelKey === modelKey)
   )
 }

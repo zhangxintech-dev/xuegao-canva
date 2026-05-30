@@ -194,6 +194,9 @@
             <button @click="scanModelConfigs" :disabled="scanningModels" class="px-4 py-2 rounded-lg border border-[var(--accent-color)] text-[var(--accent-color)] hover:bg-sky-50 text-sm transition-colors disabled:opacity-50">
               {{ scanningModels ? '扫描中...' : '扫描模型' }}
             </button>
+            <button @click="checkAllModelHealth" :disabled="checkingAllModels" class="px-4 py-2 rounded-lg border border-[var(--accent-color)] text-[var(--accent-color)] hover:bg-sky-50 text-sm transition-colors disabled:opacity-50">
+              {{ checkingAllModels ? '检测中...' : '检测全部模型' }}
+            </button>
             <button @click="saveModelConfig" class="px-4 py-2 rounded-lg bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] text-white text-sm transition-colors">
               {{ editingModelId ? '更新模型' : '保存模型' }}
             </button>
@@ -224,7 +227,12 @@
                   class="flex items-center justify-between gap-3 px-4 py-3 text-sm hover:bg-sky-50/60 dark:hover:bg-sky-900/10 transition-colors cursor-pointer"
                 >
                   <div class="min-w-0">
-                    <p class="font-medium text-[var(--text-primary)] truncate">{{ model.label || model.key }}</p>
+                    <p class="font-medium text-[var(--text-primary)] truncate">
+                      {{ model.label || model.key }}
+                      <span class="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-600 dark:bg-sky-900/30 dark:text-sky-300">
+                        {{ modelTypeLabel(model.type) }}
+                      </span>
+                    </p>
                     <p class="text-xs text-[var(--text-secondary)] truncate">{{ model.key }}</p>
                   </div>
                   <div class="flex items-center gap-2 shrink-0">
@@ -253,23 +261,32 @@
         </div>
 
         <div class="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-2xl overflow-hidden">
-          <div class="grid grid-cols-[0.7fr_1fr_1.2fr_1fr_0.8fr_1fr] gap-3 px-4 py-3 text-xs text-[var(--text-secondary)] border-b border-[var(--border-color)]">
+          <div class="grid grid-cols-[0.6fr_0.9fr_1.1fr_1fr_0.9fr_0.7fr_1.3fr] gap-3 px-4 py-3 text-xs text-[var(--text-secondary)] border-b border-[var(--border-color)]">
             <span>类型</span>
             <span>渠道</span>
             <span>模型</span>
             <span>Base URL</span>
+            <span>健康</span>
             <span>Key</span>
             <span>操作</span>
           </div>
-          <div v-for="model in models" :key="model.id" class="grid grid-cols-[0.7fr_1fr_1.2fr_1fr_0.8fr_1fr] gap-3 px-4 py-3 text-sm items-center border-b border-[var(--border-color)] last:border-b-0">
+          <div v-for="model in models" :key="model.id" class="grid grid-cols-[0.6fr_0.9fr_1.1fr_1fr_0.9fr_0.7fr_1.3fr] gap-3 px-4 py-3 text-sm items-center border-b border-[var(--border-color)] last:border-b-0">
             <span>{{ modelTypeLabel(model.type) }}</span>
             <span class="truncate">{{ model.provider }}</span>
             <span class="truncate">{{ model.displayName || model.modelKey }}</span>
             <span class="truncate text-[var(--text-secondary)]">{{ model.baseUrl || '-' }}</span>
+            <span class="truncate" :title="model.healthMessage || ''">
+              <span class="text-xs px-2 py-1 rounded-full" :class="modelHealthClass(model.healthStatus)">
+                {{ modelHealthLabel(model.healthStatus) }}
+              </span>
+            </span>
             <span>{{ model.hasApiKey ? '已配置' : '未配置' }}</span>
             <div class="flex gap-2">
               <button @click="editModel(model)" class="px-2 py-1 rounded-lg border border-[var(--border-color)] hover:border-[var(--accent-color)] text-xs">
                 编辑
+              </button>
+              <button @click="checkOneModelHealth(model)" :disabled="checkingModelId === model.id" class="px-2 py-1 rounded-lg border border-[var(--border-color)] hover:border-[var(--accent-color)] text-xs disabled:opacity-50">
+                {{ checkingModelId === model.id ? '检测中' : '检测' }}
               </button>
               <button @click="toggleModel(model)" class="px-2 py-1 rounded-lg border border-[var(--border-color)] hover:border-[var(--accent-color)] text-xs">
                 {{ model.enabled ? '停用' : '启用' }}
@@ -313,6 +330,8 @@ const scannedModels = ref([])
 const selectedScannedModel = ref('')
 const scanningModels = ref(false)
 const syncingScannedModelKey = ref('')
+const checkingAllModels = ref(false)
+const checkingModelId = ref('')
 const lastScanEndpoint = ref('')
 const lastScanMessage = ref('')
 const lastScanOk = ref(false)
@@ -395,19 +414,31 @@ const nextMissingModelType = computed(() => missingModelTypes.value.find(item =>
 
 const normalizeBaseUrl = (url = '') => String(url || '').trim().replace(/\/+$/, '')
 
-const normalizeScannedType = (type) => ['chat', 'image', 'video'].includes(type) ? type : 'chat'
+const inferScannedType = (model = {}) => {
+  const value = `${model.type || ''} ${model.key || ''} ${model.label || ''}`.toLowerCase()
+  if (/(gpt-image|dall[-_]?e|imagen|image|img|seedream|seededit|flux|sdxl|stable[-_]?diffusion|kolors|recraft|ideogram|midjourney|\bmj\b|dreamina)/.test(value)) return 'image'
+  if (/(sora|veo\d*|video|wan\d*|kling|hailuo|runway|luma|pika|vidu|minimax|cogvideo|seedance)/.test(value)) return 'video'
+  return 'chat'
+}
+
+const normalizeScannedType = (modelOrType) => {
+  if (typeof modelOrType === 'object') {
+    return ['chat', 'image', 'video'].includes(modelOrType.type) ? modelOrType.type : inferScannedType(modelOrType)
+  }
+  return ['chat', 'image', 'video'].includes(modelOrType) ? modelOrType : 'chat'
+}
 
 const scannedModelGroups = computed(() => modelTypeOptions
   .map(typeOption => ({
     ...typeOption,
-    models: scannedModels.value.filter(model => normalizeScannedType(model.type) === typeOption.type)
+    models: scannedModels.value.filter(model => normalizeScannedType(model) === typeOption.type)
   }))
   .filter(group => group.models.length)
 )
 
 const findSavedScannedModel = (scannedModel) => {
   const baseUrl = normalizeBaseUrl(modelForm.value.baseUrl)
-  const type = normalizeScannedType(scannedModel.type)
+  const type = normalizeScannedType(scannedModel)
   return models.value.find(model =>
     model.type === type &&
     model.provider === modelForm.value.provider &&
@@ -486,6 +517,20 @@ const modelTypeLabel = (type) => ({
   video: '视频',
   chat: '问答'
 }[type] || type)
+
+const modelHealthLabel = (status) => ({
+  healthy: '可用',
+  unhealthy: '异常',
+  checking: '检测中',
+  unchecked: '未检测'
+}[status] || '未检测')
+
+const modelHealthClass = (status) => ({
+  healthy: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  unhealthy: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  checking: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
+  unchecked: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'
+}[status] || 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300')
 
 const createUser = async () => {
   if (!userForm.value.email.trim()) {
@@ -609,10 +654,13 @@ const scanModelConfigs = async () => {
   lastScanOk.value = false
   try {
     const response = await adminApi.scanModels(modelForm.value)
-    scannedModels.value = unwrapList(response, 'models').map(model => ({
-      ...model,
-      type: normalizeScannedType(model.type)
-    }))
+    scannedModels.value = unwrapList(response, 'models').map(model => {
+      const normalized = {
+        ...model,
+        type: normalizeScannedType(model)
+      }
+      return normalized
+    })
     lastScanEndpoint.value = response?.data?.endpoint || response?.endpoint || ''
     selectedScannedModel.value = scannedModels.value[0]?.key || ''
     if (selectedScannedModel.value) {
@@ -637,7 +685,7 @@ const scanModelConfigs = async () => {
 }
 
 const buildScannedModelPayload = (scannedModel, enabled = true) => ({
-  type: normalizeScannedType(scannedModel.type),
+  type: normalizeScannedType(scannedModel),
   provider: modelForm.value.provider,
   modelKey: scannedModel.key,
   displayName: scannedModel.label || scannedModel.key,
@@ -715,6 +763,38 @@ const toggleModel = async (model) => {
     await modelStore.loadCloudModels()
   } catch (error) {
     window.$message?.error(error.message || '模型状态更新失败')
+  }
+}
+
+const checkOneModelHealth = async (model) => {
+  checkingModelId.value = model.id
+  try {
+    const response = await adminApi.checkModelHealth(model.id)
+    const updated = response?.data || response
+    models.value = models.value.map(item => item.id === model.id ? { ...item, ...updated } : item)
+    await modelStore.loadCloudModels()
+    window.$message?.success(updated.healthStatus === 'healthy' ? '模型检测通过' : `模型异常：${updated.healthMessage || '不可用'}`)
+  } catch (error) {
+    window.$message?.error(getErrorMessage(error) || '模型检测失败')
+  } finally {
+    checkingModelId.value = ''
+  }
+}
+
+const checkAllModelHealth = async () => {
+  checkingAllModels.value = true
+  try {
+    const response = await adminApi.checkAllModelHealth()
+    const checkedModels = unwrapList(response, 'models')
+    const checkedMap = new Map(checkedModels.map(model => [model.id, model]))
+    models.value = models.value.map(model => checkedMap.get(model.id) || model)
+    await modelStore.loadCloudModels()
+    const healthyCount = checkedModels.filter(model => model.healthStatus === 'healthy').length
+    window.$message?.success(`检测完成：${healthyCount}/${checkedModels.length} 个可用`)
+  } catch (error) {
+    window.$message?.error(getErrorMessage(error) || '模型检测失败')
+  } finally {
+    checkingAllModels.value = false
   }
 }
 

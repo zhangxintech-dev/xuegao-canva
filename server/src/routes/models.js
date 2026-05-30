@@ -14,6 +14,7 @@ const publicModel = (model) => ({
   endpoint: model.endpoint || '',
   queryEndpoint: model.queryEndpoint || '',
   enabled: model.enabled !== false,
+  healthStatus: model.healthStatus || 'unchecked',
   isCloud: true
 })
 
@@ -27,7 +28,7 @@ export const handleModelsRoute = async (req, res, pathname) => {
 
   const db = await readDb()
   const models = db.modelConfigs
-    .filter(model => model.type === type && model.enabled !== false)
+    .filter(model => model.type === type && model.enabled !== false && model.healthStatus === 'healthy')
     .map(publicModel)
   return sendJson(res, 200, { code: 200, data: { models } })
 }

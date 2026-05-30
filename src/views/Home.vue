@@ -40,7 +40,7 @@
           <img src="../assets/logo.png" alt="Logo" class="w-12 h-12 md:w-16 md:h-16" />
           <h1 class="text-2xl md:text-4xl font-bold text-[var(--text-primary)]">欢迎来到雪糕无限画布</h1>
         </div>
-        
+
         <!-- Input area | 输入区域 -->
         <div class="max-w-2xl mx-auto">
           <div class="bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] p-4 shadow-sm">
@@ -72,7 +72,7 @@
                 />
               </div>
               <div class="flex items-center gap-3">
-                <button 
+                <button
                   @click="handleCreateWithInput"
                   class="w-8 h-8 rounded-xl bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] flex items-center justify-center transition-colors shadow-sm"
                   title="AI 生成"
@@ -93,24 +93,17 @@
               <n-icon :size="16"><TrashOutline /></n-icon>
             </button>
           </div>
-          
+
           <!-- Quick suggestions | 快捷建议 -->
           <div class="flex flex-wrap items-center justify-center gap-2 mt-4">
             <span class="text-sm text-[var(--text-secondary)]">推荐：</span>
-            <button 
-              v-for="tag in suggestions" 
+            <button
+              v-for="tag in suggestions"
               :key="tag"
               @click="inputText = tag"
               class="px-3 py-1.5 text-sm rounded-full bg-[var(--bg-secondary)] border border-[var(--border-color)] hover:border-[var(--accent-color)] transition-colors"
             >
               {{ tag }}
-            </button>
-            <button
-              @click="handleGenerateFromSuggestion"
-              class="px-3 py-1.5 text-sm rounded-full bg-sky-100 text-sky-700 border border-sky-200 hover:bg-sky-200 transition-colors"
-              title="用当前推荐词 AI 生成"
-            >
-              AI生成
             </button>
             <button
               @click="refreshSuggestions"
@@ -123,11 +116,11 @@
         </div>
       </section>
 
-      <!-- My projects section | 我的项目区域 -->
+      <!-- Workflows section | 工作流区域 -->
       <section ref="projectsSection">
         <div class="flex items-center justify-between mb-4">
-          <h2 class="text-lg font-semibold text-[var(--text-primary)]">我的项目</h2>
-          <button 
+          <h2 class="text-lg font-semibold text-[var(--text-primary)]">我的个人工作流</h2>
+          <button
             @click="createNewProject"
             class="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] text-white transition-colors shadow-sm"
           >
@@ -135,32 +128,32 @@
             新建项目
           </button>
         </div>
-        
+
         <!-- Empty state | 空状态 -->
-        <div v-if="projects.length === 0" class="text-center py-12 bg-[var(--bg-secondary)] rounded-xl border border-dashed border-[var(--border-color)]">
+        <div v-if="myProjects.length === 0" class="text-center py-12 bg-[var(--bg-secondary)] rounded-xl border border-dashed border-[var(--border-color)]">
           <n-icon :size="48" class="text-[var(--text-secondary)] mb-4"><FolderOutline /></n-icon>
-          <p class="text-[var(--text-secondary)] mb-4">还没有项目，创建一个开始吧</p>
-          <button 
+          <p class="text-[var(--text-secondary)] mb-4">还没有工作流，创建一个开始吧</p>
+          <button
             @click="createNewProject"
             class="px-4 py-2 text-sm rounded-lg bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] text-white transition-colors shadow-sm"
           >
             创建第一个项目
           </button>
         </div>
-        
+
         <!-- Projects grid | 项目网格 -->
-        <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div 
-            v-for="project in projects" 
+        <div v-if="myProjects.length" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div
+            v-for="project in myProjects"
             :key="project.id"
             class="group relative"
           >
             <!-- Project card | 项目卡片 -->
-            <div 
+            <div
               @click="openProject(project)"
               class="cursor-pointer"
             >
-              <div 
+              <div
                 class="aspect-video rounded-xl overflow-hidden bg-[var(--bg-tertiary)] mb-2 border border-[var(--border-color)] relative"
                 @mouseenter="handleThumbnailHover(project, true)"
                 @mouseleave="handleThumbnailHover(project, false)"
@@ -168,7 +161,7 @@
                 <!-- Thumbnail or placeholder | 缩略图或占位 -->
                 <template v-if="project.thumbnail">
                   <!-- Video thumbnail | 视频缩略图 -->
-                  <video 
+                  <video
                     v-if="isVideoUrl(project.thumbnail)"
                     :ref="el => setVideoRef(project.id, el)"
                     :src="project.thumbnail"
@@ -178,9 +171,9 @@
                     playsinline
                   />
                   <!-- Image thumbnail | 图片缩略图 -->
-                  <img 
+                  <img
                     v-else
-                    :src="project.thumbnail" 
+                    :src="project.thumbnail"
                     :alt="project.name"
                     class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
@@ -188,20 +181,23 @@
                 <div v-else class="w-full h-full flex items-center justify-center">
                   <n-icon :size="32" class="text-[var(--text-secondary)]"><DocumentOutline /></n-icon>
                 </div>
-                
+
                 <!-- Hover overlay | 悬浮遮罩 -->
                 <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                   <span class="text-white text-sm">打开项目</span>
                 </div>
               </div>
-              <p class="text-sm text-[var(--text-primary)] truncate">{{ project.name }}</p>
+              <div class="flex items-center gap-2">
+                <p class="text-sm text-[var(--text-primary)] truncate">{{ project.name }}</p>
+                <span v-if="project.visibility === 'public'" class="text-[10px] px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700">公开</span>
+              </div>
               <p class="text-xs text-[var(--text-secondary)]">{{ formatDate(project.updatedAt) }}</p>
             </div>
-            
+
             <!-- Project actions | 项目操作 -->
-            <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+            <div v-if="canManageProject(project)" class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
               <n-dropdown :options="getProjectActions(project)" @select="(key) => handleProjectAction(key, project)" placement="bottom-end">
-                <button 
+                <button
                   @click.stop
                   class="p-1.5 bg-white/90 dark:bg-gray-800/90 rounded-lg shadow hover:bg-white dark:hover:bg-gray-800 transition-colors"
                 >
@@ -211,19 +207,20 @@
             </div>
           </div>
         </div>
+
       </section>
     </main>
 
     <!-- Left sidebar | 左侧边栏 -->
     <aside class="fixed left-4 top-1/2 -translate-y-1/2 hidden md:flex flex-col gap-2 p-2 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)] shadow-sm">
-      <button 
+      <button
         @click="createNewProject"
         class="p-2 hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
         title="新建项目"
       >
         <n-icon :size="20"><DocumentOutline /></n-icon>
       </button>
-      <button 
+      <button
         @click="scrollToProjects"
         class="p-2 hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
         title="我的项目"
@@ -251,9 +248,9 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { NIcon, NDropdown, NModal, NInput, NButton, useDialog } from 'naive-ui'
-import { 
-  AddOutline, 
-  ImageOutline, 
+import {
+  AddOutline,
+  ImageOutline,
   SendOutline,
   RefreshOutline,
   DocumentOutline,
@@ -264,21 +261,27 @@ import {
   TrashOutline,
   LogOutOutline
 } from '@vicons/ionicons5'
-import { 
-  projects, 
-  initProjectsStore, 
-  createProject, 
-  deleteProject, 
-  duplicateProject, 
-  renameProject 
+import {
+  projects,
+  initProjectsStore,
+  createProject,
+  deleteProject,
+  duplicateProject,
+  renameProject,
+  setProjectVisibility
 } from '../stores/projects'
 import { useModelStore, useAuthStore } from '../stores/pinia'
+import { generatePromptSuggestions } from '../utils/promptSuggestions'
 import AppHeader from '../components/AppHeader.vue'
 
 const router = useRouter()
 const dialog = useDialog()
 const modelStore = useModelStore()
 const authStore = useAuthStore()
+
+const currentUserId = computed(() => authStore.user?.id || '')
+const myProjects = computed(() => projects.value.filter(project => project.ownerId === currentUserId.value || project.visibility !== 'public'))
+const canManageProject = (project) => project.ownerId === currentUserId.value || !project.ownerId
 
 const isApiConfigured = computed(() => modelStore.hasCloudImageModels)
 const backendBadgeText = computed(() => {
@@ -310,10 +313,10 @@ const setVideoRef = (projectId, el) => {
 // Handle thumbnail hover | 处理缩略图悬停
 const handleThumbnailHover = (project, isHovering) => {
   if (!isVideoUrl(project.thumbnail)) return
-  
+
   const video = videoRefs.get(project.id)
   if (!video) return
-  
+
   if (isHovering) {
     video.play().catch(() => {
       // Ignore play errors (e.g., autoplay policy)
@@ -388,30 +391,10 @@ const showRenameModal = ref(false)
 const renameValue = ref('')
 const renameTargetId = ref(null)
 
-// Suggestions tags | 建议标签
-const suggestionPool = [
-  '雨中魔法森林',
-  '日式街面美食摄影',
-  '瀑布水流飞溅',
-  '雨天薰衣草花海',
-  '赛博朋克猫咪咖啡馆',
-  '雪山湖泊极光倒影',
-  '玻璃温室里的水母',
-  '复古胶片海边公路',
-  '云端城堡儿童绘本',
-  '未来感蓝色机甲少女',
-  '国风山水里的飞鸟',
-  '宇航员在花园午睡',
-  '清晨厨房阳光早餐',
-  '梦幻糖果色游乐园',
-  '微缩世界森林车站',
-  '水彩风樱花街道'
-]
-const suggestions = ref(suggestionPool.slice(0, 4))
+const suggestions = ref(generatePromptSuggestions())
 
 const refreshSuggestions = () => {
-  const shuffled = [...suggestionPool].sort(() => Math.random() - 0.5)
-  suggestions.value = shuffled.slice(0, 4)
+  suggestions.value = generatePromptSuggestions()
 }
 
 // Format date | 格式化日期
@@ -420,7 +403,7 @@ const formatDate = (date) => {
   const d = new Date(date)
   const now = new Date()
   const diff = now - d
-  
+
   // Less than 1 minute | 小于1分钟
   if (diff < 60000) return '刚刚'
   // Less than 1 hour | 小于1小时
@@ -434,12 +417,19 @@ const formatDate = (date) => {
 }
 
 // Get project actions | 获取项目操作选项
-const getProjectActions = (project) => [
-  { label: '重命名', key: 'rename', icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) },
-  { label: '复制', key: 'duplicate', icon: () => h(NIcon, null, { default: () => h(CopyOutline) }) },
-  { type: 'divider' },
-  { label: '删除', key: 'delete', icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }
-]
+const getProjectActions = (project) => {
+  const actions = [
+    { label: '重命名', key: 'rename', icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) },
+    {
+      label: project.visibility === 'public' ? '取消公开' : '设为公共',
+      key: project.visibility === 'public' ? 'makePersonal' : 'makePublic'
+    },
+    { label: '复制', key: 'duplicate', icon: () => h(NIcon, null, { default: () => h(CopyOutline) }) },
+    { type: 'divider' },
+    { label: '删除', key: 'delete', icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }
+  ]
+  return canManageProject(project) ? actions : []
+}
 
 // Handle project action | 处理项目操作
 const handleProjectAction = (key, project) => {
@@ -454,6 +444,14 @@ const handleProjectAction = (key, project) => {
       if (newId) {
         window.$message?.success('项目已复制')
       }
+      break
+    case 'makePublic':
+      setProjectVisibility(project.id, 'public')
+      window.$message?.success('已设为公共工作流')
+      break
+    case 'makePersonal':
+      setProjectVisibility(project.id, 'personal')
+      window.$message?.success('已取消公开')
       break
     case 'delete':
       dialog.warning({
@@ -538,13 +536,6 @@ const handleCreateWithInput = async () => {
     clearInputImage()
     router.push(`/canvas/${id}`)
   })
-}
-
-const handleGenerateFromSuggestion = () => {
-  if (!inputText.value.trim()) {
-    inputText.value = suggestions.value[0] || ''
-  }
-  handleCreateWithInput()
 }
 
 // Open existing project | 打开已有项目

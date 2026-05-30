@@ -32,6 +32,7 @@
             @click="handleOpenPublicWorkflow(workflow)"
           >
             <n-popconfirm
+              v-if="canManageWorkflow(workflow)"
               positive-text="删除"
               negative-text="取消"
               @positive-click="handleDeletePublicWorkflow(workflow)"
@@ -116,6 +117,7 @@
  */
 import { computed, ref } from 'vue'
 import { NIcon, NPopconfirm } from 'naive-ui'
+import { useAuthStore } from '../stores/pinia'
 import { 
   CloseOutline,
   GridOutline, 
@@ -147,6 +149,12 @@ const emit = defineEmits(['update:show', 'add-workflow', 'open-workflow'])
 // Active tab | 当前标签
 const activeTab = ref('public')
 const brokenThumbnails = ref({})
+const authStore = useAuthStore()
+const canManageWorkflow = (workflow) => {
+  if (workflow.isBuiltInPublic) return false
+  if (authStore.isAdmin) return true
+  return workflow.ownerId === authStore.user?.id || !workflow.ownerId
+}
 
 // Visible state | 显示状态
 const visible = computed({

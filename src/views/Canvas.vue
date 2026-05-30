@@ -216,7 +216,11 @@
           >
             {{ tag }}
           </button>
-          <button class="p-1 hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors">
+          <button
+            @click="refreshSuggestions"
+            class="p-1 hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
+            title="换一批推荐"
+          >
             <n-icon :size="14"><RefreshOutline /></n-icon>
           </button>
         </div>
@@ -299,11 +303,12 @@ import { loadAllModels } from '../stores/models'
 import { useChat, useWorkflowOrchestrator } from '../hooks'
 import { useModelStore } from '../stores/pinia'
 import { projects, initProjectsStore, updateProject, renameProject, currentProject } from '../stores/projects'
-import { createMyWorkflow, loadMyWorkflows, loadPublicWorkflows } from '../stores/workflows'
+import { createMyWorkflow, loadMyWorkflows, loadPublicWorkflows, loadCloudWorkflows } from '../stores/workflows'
 
 import DownloadModal from '../components/DownloadModal.vue'
 import WorkflowPanel from '../components/WorkflowPanel.vue'
 import AppHeader from '../components/AppHeader.vue'
+import { generatePromptSuggestions } from '../utils/promptSuggestions'
 
 // API Config state | API 配置状态
 const modelStore = useModelStore()
@@ -315,6 +320,7 @@ onMounted(() => {
   loadAllModels()
   loadMyWorkflows()
   loadPublicWorkflows()
+  loadCloudWorkflows()
 })
 
 // Chat templates | 问答模板
@@ -458,13 +464,11 @@ const nodeTypeOptions = [
 // Input placeholder | 输入占位符
 const inputPlaceholder = '你可以试着说"帮我生成一个二次元的卡通角色"'
 
-// Quick suggestions | 快捷建议
-const suggestions = [
-  '像个魔法森林',
-  '三只不同的小猫',
-  '生成多角度分镜',
-  '夏日田野环绕漫步'
-]
+const suggestions = ref(generatePromptSuggestions())
+
+const refreshSuggestions = () => {
+  suggestions.value = generatePromptSuggestions()
+}
 
 const openSaveWorkflowModal = () => {
   if (nodes.value.length === 0) {
@@ -475,14 +479,14 @@ const openSaveWorkflowModal = () => {
   showSaveWorkflowModal.value = true
 }
 
-const confirmSaveWorkflow = () => {
+const confirmSaveWorkflow = async () => {
   const name = saveWorkflowName.value.trim()
   if (!name) {
     window.$message?.warning('请输入工作流名称')
     return
   }
 
-  createMyWorkflow({
+  await createMyWorkflow({
     name,
     nodes: nodes.value,
     edges: edges.value,

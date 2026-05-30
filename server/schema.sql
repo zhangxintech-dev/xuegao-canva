@@ -32,10 +32,13 @@ CREATE TABLE IF NOT EXISTS projects (
   team_id TEXT REFERENCES teams(id) ON DELETE SET NULL,
   name TEXT NOT NULL,
   thumbnail TEXT DEFAULT '',
+  visibility TEXT NOT NULL DEFAULT 'personal' CHECK (visibility IN ('personal', 'public')),
   canvas_data JSONB NOT NULL DEFAULT '{"nodes":[],"edges":[],"viewport":{"x":100,"y":50,"zoom":0.8}}',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'personal';
 
 CREATE TABLE IF NOT EXISTS project_members (
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -54,6 +57,17 @@ CREATE TABLE IF NOT EXISTS workflow_versions (
   canvas_data JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (project_id, version)
+);
+
+CREATE TABLE IF NOT EXISTS saved_workflows (
+  id TEXT PRIMARY KEY,
+  owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  thumbnail TEXT DEFAULT '',
+  visibility TEXT NOT NULL DEFAULT 'personal' CHECK (visibility IN ('personal', 'public')),
+  workflow_data JSONB NOT NULL DEFAULT '{"nodes":[],"edges":[],"viewport":{}}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS assets (
@@ -108,6 +122,9 @@ CREATE TABLE IF NOT EXISTS model_configs (
   query_endpoint TEXT DEFAULT '',
   default_params JSONB NOT NULL DEFAULT '{}',
   enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  health_status TEXT NOT NULL DEFAULT 'unchecked',
+  health_message TEXT DEFAULT '',
+  health_checked_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -116,6 +133,9 @@ ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS base_url TEXT DEFAULT '';
 ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS api_key TEXT DEFAULT '';
 ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS endpoint TEXT DEFAULT '';
 ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS query_endpoint TEXT DEFAULT '';
+ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS health_status TEXT NOT NULL DEFAULT 'unchecked';
+ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS health_message TEXT DEFAULT '';
+ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS health_checked_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS operation_logs (
   id TEXT PRIMARY KEY,

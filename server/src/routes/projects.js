@@ -1,3 +1,6 @@
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { config } from '../config.js'
 import { readDb, updateDb } from '../db.js'
 import { createId, HttpError, pick, readJsonBody, sendJson } from '../lib/http.js'
 import { writeLog } from '../lib/log.js'
@@ -14,6 +17,7 @@ const publicProject = (project) => ({
   name: project.name,
   ownerId: project.ownerId,
   teamId: project.teamId || '',
+  visibility: project.visibility || 'personal',
   thumbnail: project.thumbnail || '',
   canvasData: project.canvasData || defaultCanvas(),
   createdAt: project.createdAt,
@@ -25,6 +29,158 @@ const getProjectIdFromPath = (pathname) => {
   return match?.[1] || ''
 }
 
+const normalizeVisibility = (value) => value === 'public' ? 'public' : 'personal'
+
+const parseDataUrl = (value) => {
+  const match = String(value || '').match(/^data:([^;]+);base64,(.+)$/)
+  if (!match) return null
+  return {
+    mimeType: match[1],
+    buffer: Buffer.from(match[2], 'base64')
+  }
+}
+
+const extensionFromMime = (mimeType) => {
+  if (mimeType === 'image/jpeg') return 'jpg'
+  if (mimeType === 'image/webp') return 'webp'
+  if (mimeType === 'image/gif') return 'gif'
+  if (mimeType === 'video/mp4') return 'mp4'
+  if (mimeType === 'video/webm') return 'webm'
+  return 'png'
+}
+
+const dataUrlFromMask = (value) => {
+  if (!value || typeof value !== 'string') return ''
+  if (value.startsWith('data:')) return value
+  if (/^[A-Za-z0-9+/=]+$/.test(value) && value.length > 64) {
+    return `data:image/png;base64,${value}`
+  }
+  return ''
+}
+
+const inferAssetType = (node, key, mimeType) => {
+  if (key === 'maskData') return 'mask'
+  if (node.type === 'video' || mimeType.startsWith('video/')) return 'workflow_video'
+  if (node.type === 'image' || mimeType.startsWith('image/')) return 'workflow_image'
+  return 'workflow_asset'
+}
+
+const createAssetFromDataUrl = async ({ db, userId, projectId, node, key, dataUrl }) => {
+  const parsed = parseDataUrl(dataUrl)
+  if (!parsed) return null
+  const now = new Date().toISOString()
+  const assetId = createId('asset')
+  const ext = extensionFromMime(parsed.mimeType)
+  const fileName = `${assetId}.${ext}`
+  await fs.writeFile(path.join(config.uploadDir, fileName), parsed.buffer)
+  const asset = {
+    id: assetId,
+    ownerId: userId,
+    projectId,
+    type: inferAssetType(node, key, parsed.mimeType),
+    url: `${config.publicBaseUrl}/uploads/${fileName}`,
+    storageKey: fileName,
+    width: node.data?.width || null,
+    height: node.data?.height || null,
+    mimeType: parsed.mimeType,
+    sizeBytes: parsed.buffer.length,
+    createdAt: now
+  }
+  db.assets.push(asset)
+  return asset
+}
+
+const isPersistedUploadUrl = (value) => (
+  typeof value === 'string' &&
+  value.startsWith(`${config.publicBaseUrl}/uploads/`)
+)
+
+const createAssetFromRemoteUrl = async ({ db, userId, projectId, node, key, url }) => {
+  if (typeof url !== 'string' || !/^https?:\/\//.test(url) || isPersistedUploadUrl(url)) return null
+  try {
+    const response = await fetch(url)
+    if (!response.ok) return null
+    const mimeType = response.headers.get('content-type')?.split(';')[0] || ''
+    if (!mimeType.startsWith('image/') && !mimeType.startsWith('video/')) return null
+    const buffer = Buffer.from(await response.arrayBuffer())
+    if (!buffer.length || buffer.length > 100 * 1024 * 1024) return null
+
+    const now = new Date().toISOString()
+    const assetId = createId('asset')
+    const ext = extensionFromMime(mimeType)
+    const fileName = `${assetId}.${ext}`
+    await fs.writeFile(path.join(config.uploadDir, fileName), buffer)
+    const asset = {
+      id: assetId,
+      ownerId: userId,
+      projectId,
+      type: inferAssetType(node, key, mimeType),
+      url: `${config.publicBaseUrl}/uploads/${fileName}`,
+      storageKey: fileName,
+      width: node.data?.width || null,
+      height: node.data?.height || null,
+      mimeType,
+      sizeBytes: buffer.length,
+      createdAt: now
+    }
+    db.assets.push(asset)
+    return asset
+  } catch {
+    return null
+  }
+}
+
+const persistCanvasAssets = async ({ db, canvasData, projectId, userId }) => {
+  const nodes = []
+  for (const node of canvasData.nodes || []) {
+    const data = { ...(node.data || {}) }
+    const nextNode = { ...node, data }
+
+    for (const key of ['url', 'base64', 'thumbnail']) {
+      const value = data[key]
+      if (typeof value !== 'string' || !value.startsWith('data:')) continue
+      const asset = await createAssetFromDataUrl({ db, userId, projectId, node: nextNode, key, dataUrl: value })
+      if (!asset) continue
+      if (key === 'base64') {
+        data.base64AssetId = asset.id
+        delete data.base64
+      } else {
+        data[key] = asset.url
+        data[`${key}AssetId`] = asset.id
+      }
+      if (key === 'url') data.assetId = asset.id
+    }
+
+    for (const key of ['url', 'thumbnail']) {
+      const assetIdKey = key === 'url' ? 'assetId' : `${key}AssetId`
+      if (data[assetIdKey]) continue
+      const asset = await createAssetFromRemoteUrl({ db, userId, projectId, node: nextNode, key, url: data[key] })
+      if (!asset) continue
+      data[key] = asset.url
+      data[assetIdKey] = asset.id
+      if (key === 'url') data.assetId = asset.id
+    }
+
+    const maskDataUrl = dataUrlFromMask(data.maskData)
+    if (maskDataUrl) {
+      const asset = await createAssetFromDataUrl({ db, userId, projectId, node: nextNode, key: 'maskData', dataUrl: maskDataUrl })
+      if (asset) {
+        data.maskAssetId = asset.id
+        data.maskUrl = asset.url
+        delete data.maskData
+      }
+    }
+
+    nodes.push(nextNode)
+  }
+
+  return {
+    nodes,
+    edges: canvasData.edges || [],
+    viewport: canvasData.viewport || defaultCanvas().viewport
+  }
+}
+
 export const handleProjectsRoute = async (req, res, pathname) => {
   if (req.method === 'GET' && pathname === '/api/projects') {
     const user = await requireAuth(req)
@@ -34,7 +190,11 @@ export const handleProjectsRoute = async (req, res, pathname) => {
       .map(member => member.projectId)
 
     const projects = db.projects
-      .filter(project => project.ownerId === user.id || memberProjectIds.includes(project.id))
+      .filter(project =>
+        project.ownerId === user.id ||
+        memberProjectIds.includes(project.id) ||
+        project.visibility === 'public'
+      )
       .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
       .map(publicProject)
 
@@ -53,6 +213,7 @@ export const handleProjectsRoute = async (req, res, pathname) => {
         teamId: body.teamId || '',
         name: body.name || '未命名项目',
         thumbnail: body.thumbnail || '',
+        visibility: normalizeVisibility(body.visibility),
         canvasData: body.canvasData || defaultCanvas(),
         createdAt: now,
         updatedAt: now
@@ -78,10 +239,14 @@ export const handleProjectsRoute = async (req, res, pathname) => {
     await requireProjectAccess(req, projectId, ['owner', 'editor'])
     const body = await readJsonBody(req)
     const allowed = pick(body, ['name', 'thumbnail'])
+    if (body.visibility !== undefined) allowed.visibility = normalizeVisibility(body.visibility)
 
     const project = await updateDb(async (db) => {
       const item = db.projects.find(project => project.id === projectId)
       if (!item) throw new HttpError(404, 'Project not found')
+      if (allowed.visibility !== undefined && item.ownerId !== req.user.id) {
+        throw new HttpError(403, 'Only owner can change workflow visibility')
+      }
       Object.assign(item, allowed, { updatedAt: new Date().toISOString() })
       return item
     })
@@ -156,11 +321,17 @@ export const handleProjectsRoute = async (req, res, pathname) => {
     const canvasData = await updateDb(async (db) => {
       const project = db.projects.find(project => project.id === projectId)
       if (!project) throw new HttpError(404, 'Project not found')
-      project.canvasData = {
-        nodes: body.nodes || [],
-        edges: body.edges || [],
-        viewport: body.viewport || defaultCanvas().viewport
-      }
+      const persistedCanvas = await persistCanvasAssets({
+        db,
+        projectId,
+        userId: req.user.id,
+        canvasData: {
+          nodes: body.nodes || [],
+          edges: body.edges || [],
+          viewport: body.viewport || defaultCanvas().viewport
+        }
+      })
+      project.canvasData = persistedCanvas
       project.updatedAt = new Date().toISOString()
       db.workflowVersions.push({
         id: createId('workflow_version'),

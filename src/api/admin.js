@@ -57,6 +57,16 @@ export const updateModel = (modelId, data) => request({
   data
 })
 
+export const checkModelHealth = (modelId) => request({
+  url: `${ADMIN_BASE}/models/${modelId}/health`,
+  method: 'post'
+})
+
+export const checkAllModelHealth = () => request({
+  url: `${ADMIN_BASE}/models/health-check`,
+  method: 'post'
+})
+
 export const deleteModel = (modelId) => request({
   url: `${ADMIN_BASE}/models/${modelId}`,
   method: 'delete'

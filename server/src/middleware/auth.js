@@ -54,6 +54,12 @@ export const requireProjectAccess = async (req, projectId, roles = ['owner', 'ed
     ? 'owner'
     : db.projectMembers.find(item => item.projectId === projectId && item.userId === user.id)?.role
 
+  if (!role && project.visibility === 'public' && roles.includes('viewer')) {
+    req.project = project
+    req.projectRole = 'viewer'
+    return { user, project, role: 'viewer' }
+  }
+
   if (!role || !roles.includes(role)) {
     throw new HttpError(403, 'No project access')
   }

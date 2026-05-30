@@ -14,6 +14,7 @@ import { handleQuotaRoute } from './routes/quota.js'
 import { handleLogsRoute } from './routes/logs.js'
 import { handleCollaborationRoute } from './routes/collaboration.js'
 import { handleAdminRoute } from './routes/admin.js'
+import { handleWorkflowsRoute } from './routes/workflows.js'
 
 process.on('uncaughtException', (error) => {
   console.error('[server] uncaught exception')
@@ -111,6 +112,7 @@ const handleRequest = async (req, res) => {
       await handleAdminRoute(req, res, pathname) ||
       await handleTeamsRoute(req, res, pathname) ||
       await handleProjectsRoute(req, res, pathname) ||
+      await handleWorkflowsRoute(req, res, pathname) ||
       await handleCollaborationRoute(req, res, pathname) ||
       await handleAssetsRoute(req, res, pathname) ||
       await handleGenerationRoute(req, res, pathname) ||

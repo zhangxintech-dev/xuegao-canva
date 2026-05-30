@@ -92,6 +92,8 @@ const normalizeRemoteProject = (project) => {
   const data = project?.data || project || {}
   return {
     id: data.id,
+    ownerId: data.ownerId || data.owner_id || '',
+    visibility: data.visibility || 'personal',
     name: data.name || '未命名项目',
     thumbnail: data.thumbnail || data.thumbnailUrl || data.thumbnail_url || '',
     createdAt: data.createdAt ? new Date(data.createdAt) : new Date(data.created_at || Date.now()),
@@ -118,16 +120,44 @@ const hasAppAuthToken = () => {
   }
 }
 
+const blobUrlToDataUrl = async (url) => {
+  if (typeof url !== 'string' || !url.startsWith('blob:')) return url
+  const response = await fetch(url)
+  const blob = await response.blob()
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
+const prepareNodeForCloud = async (node) => {
+  if (!node?.data) return node
+  const data = { ...node.data }
+  for (const key of ['url', 'base64', 'thumbnail']) {
+    if (typeof data[key] === 'string' && data[key].startsWith('blob:')) {
+      data[key] = await blobUrlToDataUrl(data[key])
+    }
+  }
+  return { ...node, data }
+}
+
+const prepareCanvasForCloud = async (canvasData) => ({
+  ...canvasData,
+  nodes: await Promise.all((canvasData.nodes || []).map(prepareNodeForCloud)),
+  edges: canvasData.edges || [],
+  viewport: canvasData.viewport || { x: 100, y: 50, zoom: 0.8 }
+})
+
 export const loadCloudProjects = async () => {
   if (!hasAppAuthToken()) return false
 
   try {
     const response = await projectsApi.listProjects()
     const remoteProjects = normalizeProjectListResponse(response)
-    if (remoteProjects.length > 0) {
-      projects.value = remoteProjects
-      saveProjects()
-    }
+    projects.value = remoteProjects
+    saveProjects()
     projectsSyncMode.value = 'cloud'
     projectsSyncError.value = null
     return true
@@ -189,12 +219,14 @@ export const saveProjects = () => {
  * @param {string} name - Project name | 项目名称
  * @returns {string} - New project ID | 新项目ID
  */
-export const createProject = (name = '未命名项目') => {
+export const createProject = (name = '未命名项目', options = {}) => {
   const id = generateId()
   const now = new Date()
   
   const newProject = {
     id,
+    ownerId: options.ownerId || '',
+    visibility: options.visibility || 'personal',
     name,
     thumbnail: '',
     createdAt: now,
@@ -214,7 +246,15 @@ export const createProject = (name = '未命名项目') => {
     projectsApi.createProject({
       id,
       name,
+      visibility: newProject.visibility,
       canvasData: newProject.canvasData
+    }).then(response => {
+      const remoteProject = normalizeRemoteProject(response)
+      const index = projects.value.findIndex(project => project.id === id)
+      if (index !== -1) {
+        projects.value[index] = { ...projects.value[index], ...remoteProject }
+        saveProjects()
+      }
     }).catch(error => {
       projectsSyncError.value = error
       console.warn('Failed to create cloud project:', error.message)
@@ -249,6 +289,13 @@ export const updateProject = (id, data) => {
     projectsApi.updateProject(id, {
       ...data,
       updatedAt: projects.value[0]?.updatedAt
+    }).then(response => {
+      const remoteProject = normalizeRemoteProject(response)
+      const currentIndex = projects.value.findIndex(project => project.id === id)
+      if (currentIndex !== -1) {
+        projects.value[currentIndex] = { ...projects.value[currentIndex], ...remoteProject }
+        saveProjects()
+      }
     }).catch(error => {
       projectsSyncError.value = error
       console.warn('Failed to update cloud project:', error.message)
@@ -296,10 +343,20 @@ export const updateProjectCanvas = (id, canvasData) => {
   saveProjects()
 
   if (hasAppAuthToken()) {
-    projectsApi.saveProjectCanvas(id, project.canvasData).catch(error => {
-      projectsSyncError.value = error
-      console.warn('Failed to save cloud canvas:', error.message)
-    })
+    prepareCanvasForCloud(project.canvasData)
+      .then(preparedCanvas => projectsApi.saveProjectCanvas(id, preparedCanvas))
+      .then(response => {
+        const savedCanvas = response?.data || response
+        if (!savedCanvas?.nodes) return
+        project.canvasData = savedCanvas
+        const latest = projects.value.find(item => item.id === id)
+        if (latest) latest.canvasData = savedCanvas
+        saveProjects()
+      })
+      .catch(error => {
+        projectsSyncError.value = error
+        console.warn('Failed to save cloud canvas:', error.message)
+      })
   }
   return true
 }
@@ -363,6 +420,10 @@ export const duplicateProject = (id) => {
  */
 export const renameProject = (id, name) => {
   return updateProject(id, { name })
+}
+
+export const setProjectVisibility = (id, visibility) => {
+  return updateProject(id, { visibility: visibility === 'public' ? 'public' : 'personal' })
 }
 
 /**

@@ -46,6 +46,9 @@ const publicModelConfig = (model) => ({
   hasApiKey: !!model.apiKey,
   defaultParams: model.defaultParams || {},
   enabled: model.enabled !== false,
+  healthStatus: model.healthStatus || 'unchecked',
+  healthMessage: model.healthMessage || '',
+  healthCheckedAt: model.healthCheckedAt || '',
   createdAt: model.createdAt,
   updatedAt: model.updatedAt
 })
@@ -73,16 +76,19 @@ const getModelLabel = (model, key) => (
 
 const inferModelType = (key = '') => {
   const value = key.toLowerCase()
-  if (/(^|[-_])(gpt-image|dall-e|imagen|image|img|seedream|flux|sd|stable-diffusion)([-_]|$)/.test(value)) return 'image'
-  if (/(^|[-_])(sora|veo|video|wan|kling|hailuo|runway|luma|pika)([-_]|$)/.test(value)) return 'video'
+  if (/(gpt-image|dall[-_]?e|imagen|image|img|seedream|seededit|flux|sdxl|stable[-_]?diffusion|kolors|recraft|ideogram|midjourney|\bmj\b|dreamina)/.test(value)) return 'image'
+  if (/(sora|veo\d*|video|wan\d*|kling|hailuo|runway|luma|pika|vidu|minimax|cogvideo|seedance)/.test(value)) return 'video'
   return 'chat'
 }
 
 const normalizeModelType = (value, fallback = '') => {
   const type = String(value || '').toLowerCase()
-  if (['image', 'img', 'picture'].includes(type)) return 'image'
-  if (['video', 'movie'].includes(type)) return 'video'
-  if (['chat', 'text', 'llm', 'language'].includes(type)) return 'chat'
+  if (['image', 'img', 'picture', 'text-to-image', 'txt2img', 'image-generation'].includes(type)) return 'image'
+  if (['video', 'movie', 'text-to-video', 'txt2video', 'video-generation'].includes(type)) return 'video'
+  if (['chat', 'text', 'llm', 'language', 'completion', 'text-generation'].includes(type)) return 'chat'
+  if (/image|img|picture/.test(type)) return 'image'
+  if (/video|movie/.test(type)) return 'video'
+  if (/chat|text|llm|language|completion/.test(type)) return 'chat'
   return fallback
 }
 
@@ -91,7 +97,10 @@ const getRecordModelType = (model, key, fallbackType = '') => (
     model?.type ||
     model?.modelType ||
     model?.model_type ||
+    model?.modelTypeName ||
     model?.category ||
+    model?.modelCategory ||
+    model?.model_category ||
     model?.group,
     ''
   ) || inferModelType(key) || fallbackType || 'chat'
@@ -172,6 +181,60 @@ const scanProviderModels = async ({ provider, type, baseUrl, apiKey }) => {
   }
 
   throw new HttpError(502, 'Scan models failed', { endpoints, errors })
+}
+
+const runModelHealthCheck = async (model) => {
+  const checkedAt = new Date().toISOString()
+  if (model.enabled === false) {
+    return { healthStatus: 'unhealthy', healthMessage: '模型已停用', healthCheckedAt: checkedAt }
+  }
+  if (!model.apiKey) {
+    return { healthStatus: 'unhealthy', healthMessage: 'API Key 未配置', healthCheckedAt: checkedAt }
+  }
+  if (!model.baseUrl) {
+    return { healthStatus: 'unhealthy', healthMessage: 'Base URL 未配置', healthCheckedAt: checkedAt }
+  }
+
+  try {
+    const result = await scanProviderModels({
+      provider: model.provider,
+      type: model.type,
+      baseUrl: model.baseUrl,
+      apiKey: model.apiKey
+    })
+    const matched = result.models.some(item => item.key === model.modelKey)
+    if (!matched) {
+      return {
+        healthStatus: 'unhealthy',
+        healthMessage: `扫描接口可用，但未返回该模型：${model.modelKey}`,
+        healthCheckedAt: checkedAt
+      }
+    }
+    return {
+      healthStatus: 'healthy',
+      healthMessage: `检测通过：${result.endpoint}`,
+      healthCheckedAt: checkedAt
+    }
+  } catch (error) {
+    const firstError = error.details?.errors?.find(item => item.message)
+    return {
+      healthStatus: 'unhealthy',
+      healthMessage: firstError?.message || error.message || '模型检测失败',
+      healthCheckedAt: checkedAt
+    }
+  }
+}
+
+const persistModelHealth = async (modelId, health) => {
+  return updateDb(async (db) => {
+    const item = db.modelConfigs.find(model => model.id === modelId)
+    if (!item) throw new HttpError(404, 'Model not found')
+    item.healthStatus = health.healthStatus
+    item.healthMessage = health.healthMessage
+    item.healthCheckedAt = health.healthCheckedAt
+    item.updatedAt = new Date().toISOString()
+    return item
+  })
 }
 
 export const handleAdminRoute = async (req, res, pathname) => {
@@ -331,6 +394,9 @@ export const handleAdminRoute = async (req, res, pathname) => {
         existing.defaultParams = body.defaultParams || existing.defaultParams || {}
         existing.enabled = body.enabled !== false
         if (String(body.apiKey || '').trim()) existing.apiKey = String(body.apiKey).trim()
+        existing.healthStatus = 'checking'
+        existing.healthMessage = '等待检测'
+        existing.healthCheckedAt = ''
         existing.updatedAt = now
         return existing
       }
@@ -347,6 +413,9 @@ export const handleAdminRoute = async (req, res, pathname) => {
         queryEndpoint: String(body.queryEndpoint || '').trim(),
         defaultParams: body.defaultParams || {},
         enabled: body.enabled !== false,
+        healthStatus: 'checking',
+        healthMessage: '等待检测',
+        healthCheckedAt: '',
         createdAt: now,
         updatedAt: now
       }
@@ -354,8 +423,35 @@ export const handleAdminRoute = async (req, res, pathname) => {
       return item
     })
 
-    await writeLog({ userId: admin.id, action: 'admin.model.create', message: `Created model ${model.modelKey}`, metadata: { type: model.type } })
-    return sendJson(res, 200, { code: 200, data: publicModelConfig(model) })
+    const health = await runModelHealthCheck(model)
+    const checkedModel = await persistModelHealth(model.id, health)
+    await writeLog({ userId: admin.id, action: 'admin.model.create', message: `Created model ${model.modelKey}`, metadata: { type: model.type, healthStatus: health.healthStatus } })
+    return sendJson(res, 200, { code: 200, data: publicModelConfig(checkedModel) })
+  }
+
+  if (req.method === 'POST' && pathname === '/api/admin/models/health-check') {
+    const db = await readDb()
+    const targets = db.modelConfigs.filter(model => model.enabled !== false)
+    const results = []
+    for (const model of targets) {
+      const health = await runModelHealthCheck(model)
+      const checkedModel = await persistModelHealth(model.id, health)
+      results.push(publicModelConfig(checkedModel))
+    }
+    await writeLog({ userId: admin.id, action: 'admin.model.healthCheckAll', message: `Checked ${results.length} models` })
+    return sendJson(res, 200, { code: 200, data: { models: results } })
+  }
+
+  const modelHealthMatch = pathname.match(/^\/api\/admin\/models\/([^/]+)\/health$/)
+  if (modelHealthMatch && req.method === 'POST') {
+    const modelId = modelHealthMatch[1]
+    const db = await readDb()
+    const model = db.modelConfigs.find(item => item.id === modelId)
+    if (!model) throw new HttpError(404, 'Model not found')
+    const health = await runModelHealthCheck(model)
+    const checkedModel = await persistModelHealth(model.id, health)
+    await writeLog({ userId: admin.id, action: 'admin.model.healthCheck', message: `Checked model ${model.modelKey}`, metadata: { healthStatus: health.healthStatus } })
+    return sendJson(res, 200, { code: 200, data: publicModelConfig(checkedModel) })
   }
 
   const modelMatch = pathname.match(/^\/api\/admin\/models\/([^/]+)$/)
@@ -375,11 +471,16 @@ export const handleAdminRoute = async (req, res, pathname) => {
       if (body.queryEndpoint !== undefined) item.queryEndpoint = String(body.queryEndpoint).trim()
       if (body.defaultParams !== undefined) item.defaultParams = body.defaultParams || {}
       if (body.enabled !== undefined) item.enabled = !!body.enabled
+      item.healthStatus = item.enabled ? 'checking' : 'unhealthy'
+      item.healthMessage = item.enabled ? '等待检测' : '模型已停用'
+      item.healthCheckedAt = ''
       item.updatedAt = new Date().toISOString()
       return item
     })
-    await writeLog({ userId: admin.id, action: 'admin.model.update', message: `Updated model ${model.modelKey}` })
-    return sendJson(res, 200, { code: 200, data: publicModelConfig(model) })
+    const health = await runModelHealthCheck(model)
+    const checkedModel = await persistModelHealth(model.id, health)
+    await writeLog({ userId: admin.id, action: 'admin.model.update', message: `Updated model ${model.modelKey}`, metadata: { healthStatus: health.healthStatus } })
+    return sendJson(res, 200, { code: 200, data: publicModelConfig(checkedModel) })
   }
 
   if (modelMatch && req.method === 'DELETE') {
