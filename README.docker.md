@@ -2,18 +2,61 @@
 
 ## 快速开始
 
-### 方式一：
+### 方式一：一键启动前端 + 后端 API + PostgreSQL
+
+```bash
+npm run docker:up
+```
+
+这会启动三个容器：
+
+- `xuegao-canvas-frontend`：前端页面，宿主机端口 `5173`
+- `xuegao-canvas-api`：后端 API，宿主机端口 `8787`
+- `xuegao-canvas-postgres`：PostgreSQL，宿主机端口 `5432`
+
+访问前端：
+
+```text
+http://127.0.0.1:5173/xuegao-canvas/
+```
+
+检查前后端是否可用：
+
+```bash
+npm run docker:check
+```
+
+检查后台管理功能是否完整可用：
+
+```bash
+npm run admin:check
+```
+
+看到 `dbMode: "postgres"` 后，再启动前端：
+前端容器已由 `npm run docker:up` 自动启动，不需要再运行 `npm run dev`。
+
+默认管理员：
+
+```text
+邮箱：zian@bencom.cn
+密码：123456
+```
+
+常用命令：
+
+```bash
+npm run docker:logs
+npm run docker:down
+```
+
+### 方式二：只部署前端静态页面
 
 
 ```bash
-# 1. 构建前端
-pnpm install
-pnpm build
-
-# 2. 构建 Docker 镜像
+# 1. 构建 Docker 镜像
 docker build -t xuegao-canvas .
 
-# 3. 运行容器
+# 2. 运行容器
 docker run -d -p 8080:80 --name xuegao-canvas xuegao-canvas
 ```
 
@@ -52,4 +95,3 @@ docker run -d -p 3000:80 --name xuegao-canvas peigen666/xuegao-canvas:latest
 - API 代理：`/v1` → `https://api.xuegao.site`
 - Gzip 压缩：已启用
 - 静态资源缓存：1 年
-

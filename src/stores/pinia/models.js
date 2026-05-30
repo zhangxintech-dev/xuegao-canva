@@ -14,6 +14,8 @@ import {
   DEFAULT_VIDEO_MODEL
 } from '@/config/models'
 import { PROVIDERS, getProviderList, getDefaultProvider, getProviderConfig, getDefaultBaseUrl } from '@/config/providers'
+import * as cloudModelsApi from '@/api/models'
+import { APP_API_BASE_URL } from '@/utils/request'
 
 // 存储键名
 const STORAGE_KEYS = {
@@ -148,6 +150,17 @@ export const useModelStore = defineStore('model', () => {
   const customChatModelsByProvider = ref(getStoredJson(STORAGE_KEYS.CUSTOM_CHAT_MODELS_BY_PROVIDER, {}))
   const customImageModelsByProvider = ref(getStoredJson(STORAGE_KEYS.CUSTOM_IMAGE_MODELS_BY_PROVIDER, {}))
   const customVideoModelsByProvider = ref(getStoredJson(STORAGE_KEYS.CUSTOM_VIDEO_MODELS_BY_PROVIDER, {}))
+  const cloudChatModels = ref([])
+  const cloudImageModels = ref([])
+  const cloudVideoModels = ref([])
+  const cloudModelsLoaded = ref(true)
+  const backendStatus = ref({
+    ok: false,
+    dbMode: '',
+    checkedAt: '',
+    error: '',
+    apiBaseUrl: APP_API_BASE_URL
+  })
 
   // 选中的模型
   const selectedChatModel = ref(getStored(STORAGE_KEYS.SELECTED_CHAT_MODEL, DEFAULT_CHAT_MODEL))
@@ -161,6 +174,7 @@ export const useModelStore = defineStore('model', () => {
   // 当前渠道的 API Key 和 Base URL
   const currentApiKey = computed(() => apiKeysByProvider.value[currentProvider.value] || '')
   const currentBaseUrl = computed(() => baseUrlsByProvider.value[currentProvider.value] || getDefaultBaseUrl(currentProvider.value))
+  const hasCloudImageModels = computed(() => cloudImageModels.value.length > 0)
 
   // 设置指定渠道的 API Key
   const setApiKeyByProvider = (provider, apiKey) => {
@@ -181,6 +195,8 @@ export const useModelStore = defineStore('model', () => {
   // ============ Computed: All Models (built-in + custom + by provider) ============
 
   const allChatModels = computed(() => [
+    ...cloudChatModels.value.map(m => ({ ...m, isCloud: true, isCustom: false })),
+    ...(cloudModelsLoaded.value ? [] : [
     ...CHAT_MODELS.map(m => ({ ...m, isCustom: false })),
     ...customChatModels.value.map(m => ({
       label: m.label || m.key,
@@ -194,9 +210,18 @@ export const useModelStore = defineStore('model', () => {
       isCustom: true,
       provider: [currentProvider.value]
     }))
+    ])
   ])
 
   const allImageModels = computed(() => [
+    ...cloudImageModels.value.map(m => ({
+      ...m,
+      isCloud: true,
+      isCustom: false,
+      sizes: m.sizes || [],
+      defaultParams: m.defaultParams || { quality: 'standard', style: 'vivid' }
+    })),
+    ...(cloudModelsLoaded.value ? [] : [
     ...IMAGE_MODELS.map(m => ({ ...m, isCustom: false })),
     ...customImageModels.value.map(m => ({
       label: m.label || m.key,
@@ -214,9 +239,19 @@ export const useModelStore = defineStore('model', () => {
       defaultParams: { quality: 'standard', style: 'vivid' },
       provider: [currentProvider.value]
     }))
+    ])
   ])
 
   const allVideoModels = computed(() => [
+    ...cloudVideoModels.value.map(m => ({
+      ...m,
+      isCloud: true,
+      isCustom: false,
+      ratios: m.ratios || ['16:9', '9:16', '1:1'],
+      durs: m.durs || [{ label: '5 秒', key: 5 }, { label: '10 秒', key: 10 }],
+      defaultParams: m.defaultParams || { ratio: '16:9', duration: 5 }
+    })),
+    ...(cloudModelsLoaded.value ? [] : [
     ...VIDEO_MODELS.map(m => ({ ...m, isCustom: false })),
     ...customVideoModels.value.map(m => ({
       label: m.label || m.key,
@@ -236,6 +271,7 @@ export const useModelStore = defineStore('model', () => {
       defaultParams: { ratio: '16:9', duration: 5 },
       provider: [currentProvider.value]
     }))
+    ])
   ])
 
   // ============ Computed: Available Models (filtered by provider) ============
@@ -378,18 +414,21 @@ export const useModelStore = defineStore('model', () => {
 
   // 获取图片端点
   const getImageEndpoint = () => {
+    if (hasCloudImageModels.value) return '/api/generation/image'
     const endpoint = providerConfig.value.endpoints?.image || '/images/generations'
     return buildEndpointUrl(currentBaseUrl.value, endpoint)
   }
 
   // 获取视频生成端点
   const getVideoEndpoint = () => {
+    if (cloudVideoModels.value.length > 0) return '/api/generation/video'
     const endpoint = providerConfig.value.endpoints?.video || '/videos'
     return buildEndpointUrl(currentBaseUrl.value, endpoint)
   }
 
   // 获取视频任务查询端点
   const getVideoTaskEndpoint = () => {
+    if (cloudVideoModels.value.length > 0) return '/api/generation/video/tasks/{taskId}'
     const config = providerConfig.value
     // 优先使用 videoQuery 端点，支持 {taskId} 占位符替换
     let endpoint = config.endpoints?.videoQuery || config.endpoints?.video || '/videos'
@@ -398,8 +437,77 @@ export const useModelStore = defineStore('model', () => {
 
   // 获取聊天端点（支持参考图片）
   const getChatEndpoint = () => {
+    if (cloudChatModels.value.length > 0) return '/api/generation/chat'
     const endpoint = providerConfig.value?.endpoints?.chat || '/chat/completions'
     return buildEndpointUrl(currentBaseUrl.value, endpoint)
+  }
+
+  const normalizeCloudModels = (response) => {
+    const data = response?.data || response || {}
+    const models = data.models || []
+    return models.map(model => ({
+      label: model.label || model.displayName || model.modelKey || model.key,
+      key: model.key || model.modelKey,
+      provider: null,
+      defaultParams: model.defaultParams || {},
+      isCloud: true
+    })).filter(model => model.key)
+  }
+
+  const loadCloudModels = async () => {
+    try {
+      const [chatRes, imageRes, videoRes] = await Promise.all([
+        cloudModelsApi.listModels('chat'),
+        cloudModelsApi.listModels('image'),
+        cloudModelsApi.listModels('video')
+      ])
+      cloudChatModels.value = normalizeCloudModels(chatRes)
+      cloudImageModels.value = normalizeCloudModels(imageRes)
+      cloudVideoModels.value = normalizeCloudModels(videoRes)
+      cloudModelsLoaded.value = true
+
+      if (cloudChatModels.value[0] && !cloudChatModels.value.some(model => model.key === selectedChatModel.value)) {
+        selectedChatModel.value = cloudChatModels.value[0].key
+      }
+      if (cloudImageModels.value[0] && !cloudImageModels.value.some(model => model.key === selectedImageModel.value)) {
+        selectedImageModel.value = cloudImageModels.value[0].key
+      }
+      if (cloudVideoModels.value[0] && !cloudVideoModels.value.some(model => model.key === selectedVideoModel.value)) {
+        selectedVideoModel.value = cloudVideoModels.value[0].key
+      }
+      return true
+    } catch (error) {
+      cloudModelsLoaded.value = true
+      cloudChatModels.value = []
+      cloudImageModels.value = []
+      cloudVideoModels.value = []
+      console.warn('Cloud models unavailable:', error.message)
+      return false
+    }
+  }
+
+  const checkBackendStatus = async () => {
+    try {
+      const response = await cloudModelsApi.getHealth()
+      const data = response?.data || response || {}
+      backendStatus.value = {
+        ok: !!data.ok,
+        dbMode: data.dbMode || '',
+        checkedAt: new Date().toISOString(),
+        error: '',
+        apiBaseUrl: APP_API_BASE_URL
+      }
+      return backendStatus.value
+    } catch (error) {
+      backendStatus.value = {
+        ok: false,
+        dbMode: '',
+        checkedAt: new Date().toISOString(),
+        error: error.message || '后端不可用',
+        apiBaseUrl: APP_API_BASE_URL
+      }
+      return backendStatus.value
+    }
   }
 
   // ============ Methods: Get Models By Provider (for ApiSettings) ============
@@ -506,6 +614,24 @@ export const useModelStore = defineStore('model', () => {
   }
 
   // 清除所有自定义模型
+  const clearCustomChatModels = () => {
+    customChatModels.value = []
+    customChatModelsByProvider.value = {}
+    selectedChatModel.value = DEFAULT_CHAT_MODEL
+  }
+
+  const clearCustomImageModels = () => {
+    customImageModels.value = []
+    customImageModelsByProvider.value = {}
+    selectedImageModel.value = DEFAULT_IMAGE_MODEL
+  }
+
+  const clearCustomVideoModels = () => {
+    customVideoModels.value = []
+    customVideoModelsByProvider.value = {}
+    selectedVideoModel.value = DEFAULT_VIDEO_MODEL
+  }
+
   const clearCustomModels = () => {
     customChatModels.value = []
     customImageModels.value = []
@@ -513,6 +639,14 @@ export const useModelStore = defineStore('model', () => {
     selectedChatModel.value = DEFAULT_CHAT_MODEL
     selectedImageModel.value = DEFAULT_IMAGE_MODEL
     selectedVideoModel.value = DEFAULT_VIDEO_MODEL
+  }
+
+  // 清除所有自定义模型和按渠道扫描模型
+  const clearAllCustomModels = () => {
+    clearCustomModels()
+    customChatModelsByProvider.value = {}
+    customImageModelsByProvider.value = {}
+    customVideoModelsByProvider.value = {}
   }
 
   // ============ Watch & Persist ============
@@ -566,6 +700,14 @@ export const useModelStore = defineStore('model', () => {
     allImageModelOptions,
     allVideoModelOptions,
     allChatModelOptions,
+    cloudModelsLoaded,
+    cloudChatModels,
+    cloudImageModels,
+    cloudVideoModels,
+    hasCloudImageModels,
+    loadCloudModels,
+    backendStatus,
+    checkBackendStatus,
 
     // Selected models
     selectedChatModel,
@@ -613,7 +755,11 @@ export const useModelStore = defineStore('model', () => {
     getModelsByProvider,
 
     // Clear all custom models
+    clearCustomChatModels,
+    clearCustomImageModels,
+    clearCustomVideoModels,
     clearCustomModels,
+    clearAllCustomModels,
 
     // API Config by provider
     currentApiKey,

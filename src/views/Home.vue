@@ -4,13 +4,30 @@
     <!-- Header | 顶部导航 -->
     <AppHeader>
       <template #right>
-        <button 
-          @click="showApiSettings = true"
-          class="p-2 hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
-          :class="{ 'text-[var(--accent-color)]': isApiConfigured }"
-          title="API 设置"
+        <div class="hidden sm:flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+          <span>{{ authStore.displayName }}</span>
+          <span
+            class="text-xs px-2 py-0.5 rounded-full"
+            :class="backendBadgeClass"
+            :title="backendBadgeTitle"
+          >
+            {{ backendBadgeText }}
+          </span>
+        </div>
+        <button
+          v-if="authStore.isAdmin"
+          @click="router.push('/admin')"
+          class="px-3 py-1.5 text-sm rounded-lg border border-[var(--border-color)] hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] transition-colors"
+          title="后台管理"
         >
-          <n-icon :size="20"><SettingsOutline /></n-icon>
+          后台管理
+        </button>
+        <button
+          @click="handleLogout"
+          class="p-2 hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
+          title="退出登录"
+        >
+          <n-icon :size="20"><LogOutOutline /></n-icon>
         </button>
       </template>
     </AppHeader>
@@ -34,23 +51,47 @@
               @keydown.enter.ctrl="handleCreateWithInput"
             />
             <div class="flex items-center justify-between mt-2">
-              <div class="flex items-center gap-2">
-                <!-- <button class="p-2 hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors">
-                  <n-icon :size="18"><AddOutline /></n-icon>
-                </button>
-                <button class="p-2 hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors">
+              <div class="flex flex-wrap items-center gap-2">
+                <button
+                  @click="imageInputRef?.click()"
+                  class="p-2 hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
+                  title="添加参考图片"
+                >
                   <n-icon :size="18"><ImageOutline /></n-icon>
-                </button> -->
+                </button>
+                <input ref="imageInputRef" type="file" accept="image/*" class="hidden" @change="handleImageUpload" />
+                <n-dropdown :options="imageModelOptions" @select="selectedImageModel = $event">
+                  <button class="px-2 py-1 text-xs rounded-lg border border-[var(--border-color)] hover:border-[var(--accent-color)] transition-colors max-w-[160px] truncate">
+                    {{ selectedImageModelLabel }}
+                  </button>
+                </n-dropdown>
+                <input
+                  v-model="selectedSize"
+                  placeholder="尺寸/比例，如自适应"
+                  class="w-32 px-2 py-1 text-xs bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg outline-none focus:border-[var(--accent-color)] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
+                />
               </div>
               <div class="flex items-center gap-3">
                 <button 
                   @click="handleCreateWithInput"
-                  class="w-8 h-8 rounded-xl bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] flex items-center justify-center transition-colors"
+                  class="w-8 h-8 rounded-xl bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] flex items-center justify-center transition-colors shadow-sm"
+                  title="AI 生成"
                 >
                   <n-icon :size="20" color="white"><SendOutline /></n-icon>
                 </button>
               </div>
             </div>
+          </div>
+
+          <div v-if="inputImagePreview" class="mt-3 flex items-center gap-3 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl p-2">
+            <img :src="inputImagePreview" alt="参考图" class="w-14 h-14 object-cover rounded-lg" />
+            <div class="min-w-0 flex-1 text-left">
+              <p class="text-sm text-[var(--text-primary)] truncate">{{ inputImageName }}</p>
+              <p class="text-xs text-[var(--text-secondary)]">将作为新项目参考图</p>
+            </div>
+            <button @click="clearInputImage" class="p-2 hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors">
+              <n-icon :size="16"><TrashOutline /></n-icon>
+            </button>
           </div>
           
           <!-- Quick suggestions | 快捷建议 -->
@@ -64,7 +105,18 @@
             >
               {{ tag }}
             </button>
-            <button class="p-1.5 hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors">
+            <button
+              @click="handleGenerateFromSuggestion"
+              class="px-3 py-1.5 text-sm rounded-full bg-sky-100 text-sky-700 border border-sky-200 hover:bg-sky-200 transition-colors"
+              title="用当前推荐词 AI 生成"
+            >
+              AI生成
+            </button>
+            <button
+              @click="refreshSuggestions"
+              class="p-1.5 hover:bg-sky-50 text-sky-600 rounded-lg transition-colors"
+              title="换一批推荐"
+            >
               <n-icon :size="16"><RefreshOutline /></n-icon>
             </button>
           </div>
@@ -77,7 +129,7 @@
           <h2 class="text-lg font-semibold text-[var(--text-primary)]">我的项目</h2>
           <button 
             @click="createNewProject"
-            class="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] text-white transition-colors"
+            class="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] text-white transition-colors shadow-sm"
           >
             <n-icon :size="16"><AddOutline /></n-icon>
             新建项目
@@ -90,7 +142,7 @@
           <p class="text-[var(--text-secondary)] mb-4">还没有项目，创建一个开始吧</p>
           <button 
             @click="createNewProject"
-            class="px-4 py-2 text-sm rounded-lg bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] text-white transition-colors"
+            class="px-4 py-2 text-sm rounded-lg bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] text-white transition-colors shadow-sm"
           >
             创建第一个项目
           </button>
@@ -180,9 +232,6 @@
       </button>
     </aside>
 
-    <!-- API Settings Modal | API 设置弹窗 -->
-    <ApiSettings v-model:show="showApiSettings" @saved="refreshApiConfig" />
-
     <!-- Rename modal | 重命名弹窗 -->
     <n-modal v-model:show="showRenameModal" preset="dialog" title="重命名项目">
       <n-input v-model:value="renameValue" placeholder="请输入项目名称" />
@@ -199,7 +248,7 @@
  * Home view component | 首页视图组件
  * Entry point with project list and creation input
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { NIcon, NDropdown, NModal, NInput, NButton, useDialog } from 'naive-ui'
 import { 
@@ -212,8 +261,8 @@ import {
   EllipsisHorizontalOutline,
   CreateOutline,
   CopyOutline,
-  SettingsOutline,
-  TrashOutline
+  TrashOutline,
+  LogOutOutline
 } from '@vicons/ionicons5'
 import { 
   projects, 
@@ -223,22 +272,28 @@ import {
   duplicateProject, 
   renameProject 
 } from '../stores/projects'
-import { useModelStore } from '../stores/pinia'
-import ApiSettings from '../components/ApiSettings.vue'
+import { useModelStore, useAuthStore } from '../stores/pinia'
 import AppHeader from '../components/AppHeader.vue'
 
 const router = useRouter()
 const dialog = useDialog()
 const modelStore = useModelStore()
+const authStore = useAuthStore()
 
-// API Settings state | API 设置状态
-const showApiSettings = ref(false)
-const isApiConfigured = computed(() => !!modelStore.currentApiKey)
-
-// Refresh API config state | 刷新 API 配置状态
-const refreshApiConfig = () => {
-  // 通过 computed 自动更新，不需要手动刷新
-}
+const isApiConfigured = computed(() => modelStore.hasCloudImageModels)
+const backendBadgeText = computed(() => {
+  if (!modelStore.backendStatus.ok) return '后端未连接'
+  return modelStore.backendStatus.dbMode === 'postgres' ? '云端 PG' : '云端 JSON'
+})
+const backendBadgeTitle = computed(() => {
+  if (modelStore.backendStatus.ok) return `API：${modelStore.backendStatus.apiBaseUrl}`
+  return `请先启动后端：${modelStore.backendStatus.apiBaseUrl || 'http://127.0.0.1:8787'}`
+})
+const backendBadgeClass = computed(() =>
+  modelStore.backendStatus.ok
+    ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
+    : 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-300'
+)
 
 // Video refs for hover play | 视频引用用于悬停播放
 const videoRefs = new Map()
@@ -271,6 +326,62 @@ const handleThumbnailHover = (project, isHovering) => {
 
 // Input state | 输入状态
 const inputText = ref('')
+const inputImagePreview = ref('')
+const inputImageName = ref('')
+const imageInputRef = ref(null)
+const selectedImageModel = ref(modelStore.selectedImageModel || '')
+const selectedSize = ref('自适应')
+
+const imageModelOptions = computed(() => {
+  const options = modelStore.allImageModelOptions || []
+  return options.length > 0 ? options : [{ label: '未选择模型', key: '' }]
+})
+
+const selectedImageModelLabel = computed(() => {
+  const match = imageModelOptions.value.find(item => item.key === selectedImageModel.value)
+  return match?.label || selectedImageModel.value || '大模型'
+})
+
+const syncSelectedImageModel = () => {
+  const availableOptions = imageModelOptions.value.filter(item => item.key)
+  if (!availableOptions.length) {
+    selectedImageModel.value = ''
+    return
+  }
+  if (!availableOptions.some(item => item.key === selectedImageModel.value)) {
+    selectedImageModel.value = modelStore.selectedImageModel || availableOptions[0].key
+  }
+}
+
+watch(imageModelOptions, syncSelectedImageModel, { immediate: true })
+watch(() => modelStore.selectedImageModel, syncSelectedImageModel)
+
+const fileToBase64 = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+const handleImageUpload = async (event) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+  try {
+    inputImagePreview.value = await fileToBase64(file)
+    inputImageName.value = file.name
+  } catch {
+    window.$message?.error('图片读取失败')
+  } finally {
+    event.target.value = ''
+  }
+}
+
+const clearInputImage = () => {
+  inputImagePreview.value = ''
+  inputImageName.value = ''
+}
 
 // Rename modal state | 重命名弹窗状态
 const showRenameModal = ref(false)
@@ -278,12 +389,30 @@ const renameValue = ref('')
 const renameTargetId = ref(null)
 
 // Suggestions tags | 建议标签
-const suggestions = [
+const suggestionPool = [
   '雨中魔法森林',
   '日式街面美食摄影',
   '瀑布水流飞溅',
-  '雨天富声旁边花语'
+  '雨天薰衣草花海',
+  '赛博朋克猫咪咖啡馆',
+  '雪山湖泊极光倒影',
+  '玻璃温室里的水母',
+  '复古胶片海边公路',
+  '云端城堡儿童绘本',
+  '未来感蓝色机甲少女',
+  '国风山水里的飞鸟',
+  '宇航员在花园午睡',
+  '清晨厨房阳光早餐',
+  '梦幻糖果色游乐园',
+  '微缩世界森林车站',
+  '水彩风樱花街道'
 ]
+const suggestions = ref(suggestionPool.slice(0, 4))
+
+const refreshSuggestions = () => {
+  const shuffled = [...suggestionPool].sort(() => Math.random() - 0.5)
+  suggestions.value = shuffled.slice(0, 4)
+}
 
 // Format date | 格式化日期
 const formatDate = (date) => {
@@ -352,13 +481,24 @@ const confirmRename = () => {
   renameValue.value = ''
 }
 
-// Check API key before navigation | 跳转前检查 API Key
-const checkApiKeyAndNavigate = (callback) => {
-  
+// Check cloud availability before navigation | 跳转前检查云端可用性
+const checkApiKeyAndNavigate = async (callback) => {
+  if (!authStore.isAuthenticated) {
+    dialog.warning({
+      title: '请先登录',
+      content: '未注册或未登录用户不能使用画布功能。',
+      positiveText: '知道了'
+    })
+    return false
+  }
+  if (!isApiConfigured.value) {
+    await modelStore.loadCloudModels()
+    syncSelectedImageModel()
+  }
   if (!isApiConfigured.value) {
     dialog.warning({
-      title: '未配置 API Key',
-      content: '请先在设置中配置 API Key 才能使用画布功能。',
+      title: '未配置云端模型',
+      content: '没有读取到可用的生图模型。请确认管理员已配置并启用“生图模型”，然后刷新页面重试。',
       positiveText: '知道了'
     })
     return false
@@ -367,24 +507,44 @@ const checkApiKeyAndNavigate = (callback) => {
   return true
 }
 
+const handleLogout = async () => {
+  await authStore.logout()
+  router.push('/login')
+}
+
 // Create new project | 创建新项目
-const createNewProject = () => {
-  checkApiKeyAndNavigate(() => {
+const createNewProject = async () => {
+  await checkApiKeyAndNavigate(() => {
     const id = createProject('未命名项目')
     router.push(`/canvas/${id}`)
   })
 }
 
 // Create project with input text | 使用输入文本创建项目
-const handleCreateWithInput = () => {
-  checkApiKeyAndNavigate(() => {
+const handleCreateWithInput = async () => {
+  await checkApiKeyAndNavigate(() => {
     const name = inputText.value.trim() || '未命名项目'
     const id = createProject(name)
-    // Store the input text to be used as initial prompt
-    sessionStorage.setItem('ai-canvas-initial-prompt', inputText.value.trim())
+    const size = selectedSize.value.trim()
+    const model = selectedImageModel.value || modelStore.selectedImageModel
+    sessionStorage.setItem('ai-canvas-initial-options', JSON.stringify({
+      prompt: inputText.value.trim(),
+      image: inputImagePreview.value,
+      imageName: inputImageName.value,
+      model,
+      size: !size || size === '自适应' ? 'auto' : size
+    }))
     inputText.value = ''
+    clearInputImage()
     router.push(`/canvas/${id}`)
   })
+}
+
+const handleGenerateFromSuggestion = () => {
+  if (!inputText.value.trim()) {
+    inputText.value = suggestions.value[0] || ''
+  }
+  handleCreateWithInput()
 }
 
 // Open existing project | 打开已有项目
@@ -415,7 +575,10 @@ const scrollToProjects = () => {
 }
 
 // Initialize projects store on mount | 挂载时初始化项目存储
-onMounted(() => {
+onMounted(async () => {
+  await modelStore.checkBackendStatus()
   initProjectsStore()
+  await modelStore.loadCloudModels()
+  syncSelectedImageModel()
 })
 </script>

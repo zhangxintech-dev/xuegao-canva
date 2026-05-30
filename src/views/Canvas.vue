@@ -18,6 +18,15 @@
         </n-dropdown>
       </template>
       <template #right>
+        <button
+          @click="openSaveWorkflowModal"
+          class="p-2 hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
+          :disabled="nodes.length === 0"
+          :class="{ 'opacity-40 cursor-not-allowed': nodes.length === 0 }"
+          title="保存为工作流"
+        >
+          <n-icon :size="20"><BookmarkOutline /></n-icon>
+        </button>
         <button 
           @click="showDownloadModal = true"
           class="p-2 hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
@@ -25,14 +34,6 @@
           title="批量下载素材"
         >
           <n-icon :size="20"><DownloadOutline /></n-icon>
-        </button>
-        <button 
-          @click="showApiSettings = true"
-          class="p-2 hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
-          :class="{ 'text-[var(--accent-color)]': isApiConfigured }"
-          title="API 设置"
-        >
-          <n-icon :size="20"><SettingsOutline /></n-icon>
         </button>
       </template>
     </AppHeader>
@@ -54,6 +55,7 @@
         :snap-grid="[20, 20]"
         @connect="onConnect"
         @node-click="onNodeClick"
+        @edge-click="onEdgeClick"
         @pane-click="onPaneClick"
         @viewport-change="handleViewportChange"
         @edges-change="onEdgesChange"
@@ -85,6 +87,14 @@
           <n-icon :size="20"><AppsOutline /></n-icon>
         </button>
         <div class="w-full h-px bg-[var(--border-color)] my-1"></div>
+        <button
+          @click="deleteSelectedEdge"
+          :disabled="!selectedEdgeId"
+          class="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          title="删除选中连线"
+        >
+          <n-icon :size="20"><TrashOutline /></n-icon>
+        </button>
         <button 
           v-for="tool in tools" 
           :key="tool.id"
@@ -213,15 +223,21 @@
       </div>
     </div>
 
-    <!-- API Settings Modal | API 设置弹窗 -->
-    <ApiSettings v-model:show="showApiSettings" />
-
     <!-- Rename Modal | 重命名弹窗 -->
     <n-modal v-model:show="showRenameModal" preset="dialog" title="重命名项目">
       <n-input v-model:value="renameValue" placeholder="请输入项目名称" />
       <template #action>
         <n-button @click="showRenameModal = false">取消</n-button>
         <n-button type="primary" @click="confirmRename">确定</n-button>
+      </template>
+    </n-modal>
+
+    <!-- Save Workflow Modal | 保存工作流弹窗 -->
+    <n-modal v-model:show="showSaveWorkflowModal" preset="dialog" title="保存到我的工作流">
+      <n-input v-model:value="saveWorkflowName" placeholder="请输入工作流名称" />
+      <template #action>
+        <n-button @click="showSaveWorkflowModal = false">取消</n-button>
+        <n-button type="primary" @click="confirmSaveWorkflow">保存</n-button>
       </template>
     </n-modal>
 
@@ -238,7 +254,11 @@
     <DownloadModal v-model:show="showDownloadModal" />
 
     <!-- Workflow Panel | 工作流面板 -->
-    <WorkflowPanel v-model:show="showWorkflowPanel" @add-workflow="handleAddWorkflow" />
+    <WorkflowPanel
+      v-model:show="showWorkflowPanel"
+      @add-workflow="handleAddWorkflow"
+      @open-workflow="handleOpenWorkflow"
+    />
   </div>
 </template>
 
@@ -256,7 +276,6 @@ import { NIcon, NSwitch, NDropdown, NMessageProvider, NSpin, NModal, NInput, NBu
 import { 
   ChevronBackOutline,
   ChevronDownOutline,
-  SettingsOutline,
   AddOutline,
   ImageOutline,
   SendOutline,
@@ -272,27 +291,30 @@ import {
   RemoveOutline,
   DownloadOutline,
   AppsOutline,
-  ChatbubbleOutline
+  ChatbubbleOutline,
+  TrashOutline
 } from '@vicons/ionicons5'
-import { nodes, edges, addNode, addNodes, addEdge, addEdges, updateNode, initSampleData, loadProject, saveProject, clearCanvas, canvasViewport, updateViewport, undo, redo, canUndo, canRedo, manualSaveHistory, startBatchOperation, endBatchOperation } from '../stores/canvas'
+import { nodes, edges, addNode, addNodes, addEdge, addEdges, updateNode, initSampleData, loadProject, saveProject, clearCanvas, replaceCanvas, canvasViewport, updateViewport, undo, redo, canUndo, canRedo, manualSaveHistory, startBatchOperation, endBatchOperation, removeEdge } from '../stores/canvas'
 import { loadAllModels } from '../stores/models'
 import { useChat, useWorkflowOrchestrator } from '../hooks'
 import { useModelStore } from '../stores/pinia'
 import { projects, initProjectsStore, updateProject, renameProject, currentProject } from '../stores/projects'
+import { createMyWorkflow, loadMyWorkflows, loadPublicWorkflows } from '../stores/workflows'
 
-// API Settings component | API 设置组件
-import ApiSettings from '../components/ApiSettings.vue'
 import DownloadModal from '../components/DownloadModal.vue'
 import WorkflowPanel from '../components/WorkflowPanel.vue'
 import AppHeader from '../components/AppHeader.vue'
 
 // API Config state | API 配置状态
 const modelStore = useModelStore()
-const isApiConfigured = computed(() => !!modelStore.currentApiKey)
+const isApiConfigured = computed(() => modelStore.hasCloudImageModels)
 
 // Initialize models on page load | 页面加载时初始化模型
 onMounted(() => {
+  modelStore.loadCloudModels()
   loadAllModels()
+  loadMyWorkflows()
+  loadPublicWorkflows()
 })
 
 // Chat templates | 问答模板
@@ -377,8 +399,8 @@ const chatInput = ref('')
 const autoExecute = ref(false)
 const isMobile = ref(false)
 const showGrid = ref(true)
-const showApiSettings = ref(false)
 const isProcessing = ref(false)
+const selectedEdgeId = ref('')
 
 // Flow key for forcing re-render on project switch | 项目切换时强制重新渲染的 key
 const flowKey = ref(Date.now())
@@ -388,7 +410,9 @@ const showRenameModal = ref(false)
 const showDeleteModal = ref(false)
 const showDownloadModal = ref(false)
 const showWorkflowPanel = ref(false)
+const showSaveWorkflowModal = ref(false)
 const renameValue = ref('')
+const saveWorkflowName = ref('')
 
 // Check if has downloadable assets | 检查是否有可下载素材
 const hasDownloadableAssets = computed(() => {
@@ -425,7 +449,7 @@ const tools = [
 const nodeTypeOptions = [
   { type: 'text', name: '文本节点', icon: TextOutline, color: '#3b82f6' },
   { type: 'llmConfig', name: 'LLM文本生成', icon: ChatbubbleOutline, color: '#a855f7' },
-  { type: 'imageConfig', name: '文生图配置', icon: ColorPaletteOutline, color: '#22c55e' },
+  { type: 'imageConfig', name: '文生图配置', icon: ColorPaletteOutline, color: '#38bdf8' },
   { type: 'videoConfig', name: '视频生成配置', icon: VideocamOutline, color: '#f59e0b' },
   { type: 'image', name: '图片节点', icon: ImageOutline, color: '#8b5cf6' },
   { type: 'video', name: '视频节点', icon: VideocamOutline, color: '#ef4444' }
@@ -441,6 +465,33 @@ const suggestions = [
   '生成多角度分镜',
   '夏日田野环绕漫步'
 ]
+
+const openSaveWorkflowModal = () => {
+  if (nodes.value.length === 0) {
+    window.$message?.warning('当前画布为空，无法保存工作流')
+    return
+  }
+  saveWorkflowName.value = projectName.value || '未命名工作流'
+  showSaveWorkflowModal.value = true
+}
+
+const confirmSaveWorkflow = () => {
+  const name = saveWorkflowName.value.trim()
+  if (!name) {
+    window.$message?.warning('请输入工作流名称')
+    return
+  }
+
+  createMyWorkflow({
+    name,
+    nodes: nodes.value,
+    edges: edges.value,
+    viewport: canvasViewport.value
+  })
+
+  showSaveWorkflowModal.value = false
+  window.$message?.success('已保存到我的工作流')
+}
 
 // Add new node | 添加新节点
 const addNewNode = async (type) => {
@@ -515,6 +566,19 @@ const handleAddWorkflow = ({ workflow, options }) => {
   }, 100)
 
   window.$message?.success(`已添加工作流: ${workflow.name}`)
+}
+
+const handleOpenWorkflow = (workflow) => {
+  replaceCanvas({
+    nodes: workflow.nodes,
+    edges: workflow.edges,
+    viewport: workflow.viewport
+  })
+  flowKey.value = Date.now()
+  nextTick(() => {
+    fitView({ padding: 0.2 })
+  })
+  window.$message?.success(`已打开工作流: ${workflow.name}`)
 }
 
 // Handle connection | 处理连接
@@ -612,6 +676,44 @@ const onNodeClick = (event) => {
   // }
 }
 
+const onEdgeClick = (event) => {
+  selectedEdgeId.value = event.edge?.id || ''
+  edges.value = edges.value.map(edge => ({
+    ...edge,
+    animated: edge.id === selectedEdgeId.value,
+    style: edge.id === selectedEdgeId.value
+      ? { ...(edge.style || {}), stroke: 'var(--accent-color)', strokeWidth: 3 }
+      : { ...(edge.style || {}), strokeWidth: undefined }
+  }))
+}
+
+const clearEdgeSelection = () => {
+  if (!selectedEdgeId.value) return
+  selectedEdgeId.value = ''
+  edges.value = edges.value.map(edge => ({
+    ...edge,
+    animated: false,
+    style: { ...(edge.style || {}), strokeWidth: undefined }
+  }))
+}
+
+const deleteSelectedEdge = () => {
+  if (!selectedEdgeId.value) return
+  removeEdge(selectedEdgeId.value)
+  selectedEdgeId.value = ''
+  window.$message?.success('连线已删除')
+}
+
+const handleCanvasKeydown = (event) => {
+  if ((event.key === 'Delete' || event.key === 'Backspace') && selectedEdgeId.value) {
+    const target = event.target
+    const isEditing = ['INPUT', 'TEXTAREA'].includes(target?.tagName) || target?.isContentEditable
+    if (isEditing) return
+    event.preventDefault()
+    deleteSelectedEdge()
+  }
+}
+
 // Handle viewport change | 处理视口变化
 const handleViewportChange = (newViewport) => {
   updateViewport(newViewport)
@@ -633,6 +735,7 @@ const onEdgesChange = (changes) => {
 // Handle pane click | 处理画布点击
 const onPaneClick = () => {
   showNodeMenu.value = false
+  clearEdgeSelection()
   // Clear all selections | 清除所有选中
   // nodes.value = nodes.value.map(node => ({
   //   ...node,
@@ -689,8 +792,7 @@ const handlePolish = async () => {
   
   // Check API configuration | 检查 API 配置
   if (!isApiConfigured.value) {
-    window.$message?.warning('请先配置 API Key')
-    showApiSettings.value = true
+    window.$message?.warning('请联系管理员配置云端模型')
     return
   }
 
@@ -720,8 +822,7 @@ const sendMessage = async () => {
 
   // Check API configuration | 检查 API 配置
   if (!isApiConfigured.value) {
-    window.$message?.warning('请先配置 API Key')
-    showApiSettings.value = true
+    window.$message?.warning('请联系管理员配置云端模型')
     return
   }
 
@@ -834,6 +935,7 @@ watch(
 onMounted(() => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
+  window.addEventListener('keydown', handleCanvasKeydown)
   
   // Initialize projects store | 初始化项目存储
   initProjectsStore()
@@ -843,7 +945,17 @@ onMounted(() => {
   
   // Check for initial prompt from home page | 检查来自首页的初始提示词
   const initialPrompt = sessionStorage.getItem('ai-canvas-initial-prompt')
-  if (initialPrompt) {
+  const initialOptionsRaw = sessionStorage.getItem('ai-canvas-initial-options')
+  if (initialOptionsRaw) {
+    sessionStorage.removeItem('ai-canvas-initial-options')
+    let initialOptions = {}
+    try {
+      initialOptions = JSON.parse(initialOptionsRaw)
+    } catch {
+      initialOptions = {}
+    }
+    createInitialWorkflow(initialOptions)
+  } else if (initialPrompt) {
     sessionStorage.removeItem('ai-canvas-initial-prompt')
     chatInput.value = initialPrompt
     // Auto-send the message | 自动发送消息
@@ -856,9 +968,62 @@ onMounted(() => {
 // Cleanup on unmount | 卸载时清理
 onUnmounted(() => {
   window.removeEventListener('resize', checkMobile)
+  window.removeEventListener('keydown', handleCanvasKeydown)
   // Save project before leaving | 离开前保存项目
   saveProject()
 })
+
+const createInitialWorkflow = (options = {}) => {
+  const prompt = options.prompt || ''
+  const baseX = 100
+  const baseY = 160
+
+  startBatchOperation()
+
+  const textNodeId = addNode('text', { x: baseX, y: baseY }, {
+    content: prompt,
+    label: '提示词'
+  })
+
+  let imageNodeId = null
+  if (options.image) {
+    imageNodeId = addNode('image', { x: baseX, y: baseY + 260 }, {
+      url: options.image,
+      base64: options.image,
+      fileName: options.imageName || '',
+      label: '参考图'
+    })
+  }
+
+  const imageConfigNodeId = addNode('imageConfig', { x: baseX + 420, y: baseY }, {
+    label: '文生图',
+    model: options.model || undefined,
+    size: options.size || 'auto'
+  })
+
+  addEdge({
+    source: textNodeId,
+    target: imageConfigNodeId,
+    sourceHandle: 'right',
+    targetHandle: 'left'
+  })
+
+  if (imageNodeId) {
+    addEdge({
+      source: imageNodeId,
+      target: imageConfigNodeId,
+      sourceHandle: 'right',
+      targetHandle: 'left',
+      type: 'imageOrder',
+      data: { imageOrder: 1 }
+    })
+  }
+
+  endBatchOperation()
+  nextTick(() => {
+    ;[textNodeId, imageNodeId, imageConfigNodeId].filter(Boolean).forEach(nodeId => updateNodeInternals(nodeId))
+  })
+}
 </script>
 
 <style>

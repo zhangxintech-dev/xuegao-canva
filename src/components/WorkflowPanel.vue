@@ -28,11 +28,29 @@
           <div 
             v-for="workflow in publicWorkflows" 
             :key="workflow.id"
-            class="workflow-card"
-            @click="handleAddWorkflow(workflow)"
+            class="workflow-card my-workflow-card"
+            @click="handleOpenPublicWorkflow(workflow)"
           >
+            <n-popconfirm
+              positive-text="删除"
+              negative-text="取消"
+              @positive-click="handleDeletePublicWorkflow(workflow)"
+            >
+              <template #trigger>
+                <button class="delete-workflow-btn" @click.stop title="删除公共工作流">
+                  <n-icon :size="14"><TrashOutline /></n-icon>
+                </button>
+              </template>
+              确认删除「{{ workflow.name }}」？
+            </n-popconfirm>
             <div class="card-cover">
-              <img v-if="workflow.cover" :src="workflow.cover" :alt="workflow.name" class="cover-img" />
+              <img
+                v-if="getWorkflowCover(workflow) && !brokenThumbnails[workflow.id]"
+                :src="getWorkflowCover(workflow)"
+                :alt="workflow.name"
+                class="cover-img"
+                @error.stop="handleThumbnailError(workflow.id)"
+              />
               <n-icon v-else :size="36" class="cover-icon">
                 <component :is="getIcon(workflow.icon)" />
               </n-icon>
@@ -42,6 +60,44 @@
         </div>
         
         <!-- My workflows | 我的工作流 -->
+        <div v-else-if="myWorkflows.length > 0" class="workflow-grid">
+          <div
+            v-for="workflow in myWorkflows"
+            :key="workflow.id"
+            class="workflow-card my-workflow-card"
+            @click="handleOpenMyWorkflow(workflow)"
+          >
+            <n-popconfirm
+              positive-text="删除"
+              negative-text="取消"
+              @positive-click="handleDeleteMyWorkflow(workflow.id)"
+            >
+              <template #trigger>
+                <button class="delete-workflow-btn" @click.stop title="删除工作流">
+                  <n-icon :size="14"><TrashOutline /></n-icon>
+                </button>
+              </template>
+              确认删除「{{ workflow.name }}」？
+            </n-popconfirm>
+            <button class="publish-workflow-btn" @click.stop="handlePublishWorkflow(workflow)" title="发布到公共工作流">
+              发布
+            </button>
+            <div class="card-cover">
+              <img
+                v-if="workflow.thumbnail && !brokenThumbnails[workflow.id]"
+                :src="workflow.thumbnail"
+                :alt="workflow.name"
+                class="cover-img"
+                @error.stop="handleThumbnailError(workflow.id)"
+              />
+              <n-icon v-else :size="36" class="cover-icon">
+                <FolderOpenOutline />
+              </n-icon>
+            </div>
+            <div class="card-title">{{ workflow.name }}</div>
+          </div>
+        </div>
+
         <div v-else class="empty-state">
           <n-icon :size="36" class="text-gray-500">
             <FolderOpenOutline />
@@ -59,7 +115,7 @@
  * 显示工作流模板列表，支持一键添加到画布
  */
 import { computed, ref } from 'vue'
-import { NIcon } from 'naive-ui'
+import { NIcon, NPopconfirm } from 'naive-ui'
 import { 
   CloseOutline,
   GridOutline, 
@@ -69,18 +125,28 @@ import {
   BookOutline,
   PersonOutline,
   CartOutline,
-  ChatbubbleOutline
+  ChatbubbleOutline,
+  TrashOutline
 } from '@vicons/ionicons5'
 import { WORKFLOW_TEMPLATES } from '../config/workflows'
+import {
+  myWorkflows,
+  publishedWorkflows,
+  deletedPublicWorkflowIds,
+  deleteMyWorkflow,
+  publishWorkflow,
+  deletePublicWorkflow
+} from '../stores/workflows'
 
 const props = defineProps({
   show: Boolean
 })
 
-const emit = defineEmits(['update:show', 'add-workflow'])
+const emit = defineEmits(['update:show', 'add-workflow', 'open-workflow'])
 
 // Active tab | 当前标签
 const activeTab = ref('public')
+const brokenThumbnails = ref({})
 
 // Visible state | 显示状态
 const visible = computed({
@@ -89,7 +155,14 @@ const visible = computed({
 })
 
 // Public workflows | 公共工作流
-const publicWorkflows = computed(() => WORKFLOW_TEMPLATES)
+const publicWorkflows = computed(() => {
+  const hiddenIds = new Set(deletedPublicWorkflowIds.value)
+  const builtInWorkflows = WORKFLOW_TEMPLATES
+    .filter(workflow => !hiddenIds.has(workflow.id))
+    .map(workflow => ({ ...workflow, isBuiltInPublic: true }))
+  const customPublicWorkflows = publishedWorkflows.value.filter(workflow => !hiddenIds.has(workflow.id))
+  return [...customPublicWorkflows, ...builtInWorkflows]
+})
 
 // Icon mapping | 图标映射
 const iconMap = {
@@ -106,11 +179,49 @@ const getIcon = (iconName) => {
   return iconMap[iconName] || GridOutline
 }
 
+const getWorkflowCover = (workflow) => workflow.cover || workflow.thumbnail || ''
+
 // Handle add workflow | 处理添加工作流
 const handleAddWorkflow = (workflow) => {
   // 直接添加工作流，节点内容由用户自己填写
   emit('add-workflow', { workflow, options: {} })
   visible.value = false
+}
+
+const handleOpenPublicWorkflow = (workflow) => {
+  if (workflow.isCustomPublic) {
+    emit('open-workflow', workflow)
+    visible.value = false
+    return
+  }
+  handleAddWorkflow(workflow)
+}
+
+const handleOpenMyWorkflow = (workflow) => {
+  emit('open-workflow', workflow)
+  visible.value = false
+}
+
+const handleDeleteMyWorkflow = (id) => {
+  deleteMyWorkflow(id)
+  window.$message?.success('工作流已删除')
+}
+
+const handlePublishWorkflow = async (workflow) => {
+  await publishWorkflow(workflow)
+  window.$message?.success('已发布到公共工作流')
+}
+
+const handleDeletePublicWorkflow = async (workflow) => {
+  await deletePublicWorkflow(workflow)
+  window.$message?.success('公共工作流已删除')
+}
+
+const handleThumbnailError = (id) => {
+  brokenThumbnails.value = {
+    ...brokenThumbnails.value,
+    [id]: true
+  }
 }
 
 // Handle click outside | 点击外部关闭
@@ -229,6 +340,10 @@ const vClickOutside = {
   transition: transform 0.2s;
 }
 
+.my-workflow-card {
+  position: relative;
+}
+
 .workflow-card:hover {
   transform: translateY(-2px);
 }
@@ -247,12 +362,15 @@ const vClickOutside = {
   border: 1px solid var(--border-color);
   transition: border-color 0.2s;
   overflow: hidden;
+  position: relative;
 }
 
 .cover-img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  display: block;
+  object-fit: contain;
+  background: var(--bg-tertiary);
 }
 
 .cover-icon {
@@ -267,6 +385,49 @@ const vClickOutside = {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.delete-workflow-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  z-index: 2;
+}
+
+.delete-workflow-btn:hover {
+  color: #ef4444;
+  background: var(--bg-tertiary);
+}
+
+.publish-workflow-btn {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  height: 26px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  color: var(--accent-color);
+  background: var(--bg-secondary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  z-index: 2;
+  font-size: 12px;
+}
+
+.publish-workflow-btn:hover {
+  background: var(--bg-tertiary);
 }
 
 /* Empty state | 空状态 */

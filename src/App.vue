@@ -13,6 +13,10 @@ const theme = computed(() => isDark.value ? darkTheme : null)
 // Global theme overrides | 全局主题覆盖
 const themeOverrides = {
   common: {
+    primaryColor: '#38bdf8',
+    primaryColorHover: '#0ea5e9',
+    primaryColorPressed: '#0284c7',
+    primaryColorSuppl: '#7dd3fc',
     borderRadius: '12px',
     borderRadiusSmall: '8px'
   },

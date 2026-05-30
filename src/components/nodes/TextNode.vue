@@ -112,7 +112,7 @@ const { updateNodeInternals } = useVueFlow()
 
 // API config state | API 配置状态
 const modelStore = useModelStore()
-const isApiConfigured = computed(() => !!modelStore.currentApiKey)
+const isApiConfigured = computed(() => modelStore.cloudChatModels.length > 0)
 
 // Chat hook for polish | 润色用的 Chat hook
 const { send: sendChat } = useChat({
@@ -600,6 +600,7 @@ watch(content, (newVal) => {
 
 // Initialize editor content | 初始化 editor 内容
 onMounted(() => {
+  modelStore.loadCloudModels()
   if (editorRef.value) {
     if (props.data?.content) {
       content.value = props.data.content
@@ -623,7 +624,7 @@ const handlePolish = async () => {
   
   // Check API configuration | 检查 API 配置
   if (!isApiConfigured.value) {
-    window.$message?.warning('请先配置 API Key')
+    window.$message?.warning('请联系管理员配置云端问答模型')
     return
   }
 

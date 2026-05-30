@@ -5,18 +5,31 @@
 
 import axios from 'axios'
 
-// Base URL from environment or default
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.xuegao.site'
+export const APP_API_BASE_URL = import.meta.env.VITE_APP_API_BASE_URL || 'http://127.0.0.1:8787'
 
 // Create axios instance | 创建 axios 实例
 const instance = axios.create({
-  baseURL: "/",
+  baseURL: APP_API_BASE_URL,
   timeout: 30000000
 })
+
+const isAppApiRequest = (url = '') => {
+  return url.startsWith('/api/') || url.includes('/api/')
+}
 
 // Request interceptor | 请求拦截器
 instance.interceptors.request.use(
   (config) => {
+    const requestUrl = config.url || ''
+
+    if (isAppApiRequest(requestUrl)) {
+      const token = localStorage.getItem('app-auth-token') || ''
+      if (token) {
+        config.headers['Authorization'] = `Bearer ${token}`
+      }
+      return config
+    }
+
     // Get current provider | 获取当前渠道
     const currentProvider = localStorage.getItem('api-provider') || 'xuegao'
 
@@ -32,7 +45,7 @@ instance.interceptors.request.use(
 
     // Skip auth for certain endpoints | 跳过某些端点的认证
     const noAuthEndpoints = ['/model/page', '/model/fullName', '/model/types']
-    const isNoAuth = noAuthEndpoints.some(ep => config.url?.includes(ep))
+    const isNoAuth = noAuthEndpoints.some(ep => requestUrl.includes(ep))
 
     if (apiKey && !isNoAuth) {
       config.headers['Authorization'] = `Bearer ${apiKey}`
@@ -83,14 +96,19 @@ instance.interceptors.response.use(
         error.message
       
       if (status === 401) {
-        window.$message?.error('API Key 无效或已过期')
+        const isAppApi = isAppApiRequest(error.config?.url || '')
+        window.$message?.error(isAppApi ? '登录已过期，请重新登录' : 'API Key 无效或已过期')
       } else if (status === 429) {
         window.$message?.error('请求过于频繁，请稍后再试')
       } else {
         window.$message?.error(message || '请求失败')
       }
     } else {
-      window.$message?.error(error.message || '网络错误')
+      const isAppApi = isAppApiRequest(error.config?.url || '')
+      message = isAppApi
+        ? `后端未连接，请先启动 API 服务：${APP_API_BASE_URL}`
+        : (error.message || '网络错误')
+      window.$message?.error(message)
     }
     
     error.message = message || error.message

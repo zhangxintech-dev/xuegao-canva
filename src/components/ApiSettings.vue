@@ -63,24 +63,40 @@
       <!-- 模型配置标签 -->
       <n-tab-pane name="models" tab="模型配置">
         <div class="model-config-section">
-          <div class="model-scan-bar">
-            <n-button
-              size="small"
-              type="primary"
-              secondary
-              :loading="isScanningModels"
-              @click="handleScanModels"
-            >
-              扫描模型
-            </n-button>
+          <div v-if="scanMessage" class="model-scan-bar">
             <span v-if="scanMessage" class="model-scan-message">{{ scanMessage }}</span>
           </div>
 
           <!-- 问答模型 -->
           <div class="model-group">
             <div class="model-group-header">
-              <span class="model-group-title">问答模型</span>
-              <n-tag size="tiny" type="info">{{ allChatModels.length }} 个</n-tag>
+              <div class="model-group-heading">
+                <span class="model-group-title">问答模型</span>
+                <n-tag size="tiny" type="info">{{ chatModelCount }} 个</n-tag>
+              </div>
+              <div class="model-group-actions">
+                <n-popconfirm
+                  positive-text="确认清除"
+                  negative-text="取消"
+                  @positive-click="handleClearModels('chat')"
+                >
+                  <template #trigger>
+                    <n-button size="tiny" type="error" tertiary :disabled="!customChatModelCount">
+                      清除
+                    </n-button>
+                  </template>
+                  确认清除所有问答模型？
+                </n-popconfirm>
+                <n-button
+                  size="tiny"
+                  type="primary"
+                  secondary
+                  :loading="isScanningType('chat')"
+                  @click="handleScanModels('chat')"
+                >
+                  扫描
+                </n-button>
+              </div>
             </div>
             <div class="model-input-row">
               <n-input
@@ -95,7 +111,7 @@
             </div>
             <div class="model-tags">
               <n-tag
-                v-for="model in allChatModels"
+                v-for="model in chatModelList"
                 :key="model.key"
                 size="small"
                 :closable="model.isCustom"
@@ -110,8 +126,33 @@
           <!-- 图片模型 -->
           <div class="model-group">
             <div class="model-group-header">
-              <span class="model-group-title">图片模型</span>
-              <n-tag size="tiny" type="success">{{ allImageModels.length }} 个</n-tag>
+              <div class="model-group-heading">
+                <span class="model-group-title">图片模型</span>
+                <n-tag size="tiny" type="success">{{ imageModelCount }} 个</n-tag>
+              </div>
+              <div class="model-group-actions">
+                <n-popconfirm
+                  positive-text="确认清除"
+                  negative-text="取消"
+                  @positive-click="handleClearModels('image')"
+                >
+                  <template #trigger>
+                    <n-button size="tiny" type="error" tertiary :disabled="!customImageModelCount">
+                      清除
+                    </n-button>
+                  </template>
+                  确认清除所有图片模型？
+                </n-popconfirm>
+                <n-button
+                  size="tiny"
+                  type="primary"
+                  secondary
+                  :loading="isScanningType('image')"
+                  @click="handleScanModels('image')"
+                >
+                  扫描
+                </n-button>
+              </div>
             </div>
             <div class="model-input-row">
               <n-input
@@ -126,7 +167,7 @@
             </div>
             <div class="model-tags">
               <n-tag
-                v-for="model in allImageModels"
+                v-for="model in imageModelList"
                 :key="model.key"
                 size="small"
                 :closable="model.isCustom"
@@ -141,8 +182,33 @@
           <!-- 视频模型 -->
           <div class="model-group">
             <div class="model-group-header">
-              <span class="model-group-title">视频模型</span>
-              <n-tag size="tiny" type="warning">{{ allVideoModels.length }} 个</n-tag>
+              <div class="model-group-heading">
+                <span class="model-group-title">视频模型</span>
+                <n-tag size="tiny" type="warning">{{ videoModelCount }} 个</n-tag>
+              </div>
+              <div class="model-group-actions">
+                <n-popconfirm
+                  positive-text="确认清除"
+                  negative-text="取消"
+                  @positive-click="handleClearModels('video')"
+                >
+                  <template #trigger>
+                    <n-button size="tiny" type="error" tertiary :disabled="!customVideoModelCount">
+                      清除
+                    </n-button>
+                  </template>
+                  确认清除所有视频模型？
+                </n-popconfirm>
+                <n-button
+                  size="tiny"
+                  type="primary"
+                  secondary
+                  :loading="isScanningType('video')"
+                  @click="handleScanModels('video')"
+                >
+                  扫描
+                </n-button>
+              </div>
             </div>
             <div class="model-input-row">
               <n-input
@@ -157,7 +223,7 @@
             </div>
             <div class="model-tags">
               <n-tag
-                v-for="model in allVideoModels"
+                v-for="model in videoModelList"
                 :key="model.key"
                 size="small"
                 :closable="model.isCustom"
@@ -190,7 +256,7 @@
  * Modal for configuring API key, base URL, and custom models
  */
 import { ref, reactive, watch, computed } from 'vue'
-import { NModal, NForm, NFormItem, NInput, NButton, NAlert, NDivider, NTag, NTabs, NTabPane, NSelect } from 'naive-ui'
+import { NModal, NForm, NFormItem, NInput, NButton, NAlert, NDivider, NTag, NTabs, NTabPane, NSelect, NPopconfirm } from 'naive-ui'
 import { useModelStore } from '../stores/pinia'
 import { getProviderConfig } from '../config/providers'
 
@@ -228,10 +294,28 @@ const currentEndpoints = computed(() => {
   }
 })
 
+const toModelArray = (models) => {
+  if (Array.isArray(models)) return models
+  if (Array.isArray(models?.value)) return models.value
+  return []
+}
+
 // 全局模型列表（不区分渠道）
-const allChatModels = computed(() => modelStore.allChatModels)
-const allImageModels = computed(() => modelStore.allImageModels)
-const allVideoModels = computed(() => modelStore.allVideoModels)
+const chatModelList = computed(() => toModelArray(modelStore.allChatModels))
+const imageModelList = computed(() => toModelArray(modelStore.allImageModels))
+const videoModelList = computed(() => toModelArray(modelStore.allVideoModels))
+const chatModelCount = computed(() => chatModelList.value.length)
+const imageModelCount = computed(() => imageModelList.value.length)
+const videoModelCount = computed(() => videoModelList.value.length)
+const customChatModelCount = computed(() =>
+  modelStore.customChatModels.length + Object.values(modelStore.customChatModelsByProvider || {}).flat().length
+)
+const customImageModelCount = computed(() =>
+  modelStore.customImageModels.length + Object.values(modelStore.customImageModelsByProvider || {}).flat().length
+)
+const customVideoModelCount = computed(() =>
+  modelStore.customVideoModels.length + Object.values(modelStore.customVideoModelsByProvider || {}).flat().length
+)
 
 // Modal visibility | 弹窗可见性
 const showModal = ref(props.show)
@@ -247,8 +331,16 @@ const formData = reactive({
 const newChatModel = ref('')
 const newImageModel = ref('')
 const newVideoModel = ref('')
-const isScanningModels = ref(false)
+const scanningModelType = ref('')
 const scanMessage = ref('')
+
+const modelTypeLabels = {
+  chat: '问答模型',
+  image: '图片模型',
+  video: '视频模型'
+}
+
+const isScanningType = (type) => scanningModelType.value === type
 
 // 初始化或切换渠道时，更新 API 配置
 const updateFormApiConfig = () => {
@@ -359,15 +451,18 @@ const extractModelRecords = (payload) => {
   return list || []
 }
 
-const getScanEndpoints = (baseUrl) => {
+const getScanEndpoints = (baseUrl, provider, modelType) => {
   const rootUrl = baseUrl.endsWith('/v1') ? baseUrl.replace(/\/v1$/, '') : baseUrl
-  return Array.from(new Set([
-    `${baseUrl}/model/page?enable=true&size=1000&current=1`,
-    `${baseUrl}/models`,
-    `${rootUrl}/model/page?enable=true&size=1000&current=1`,
-    `${rootUrl}/v1/models`,
-    `${rootUrl}/models`
-  ]))
+  if (provider === 'openai') {
+    return [baseUrl.endsWith('/v1') ? `${baseUrl}/models` : `${rootUrl}/v1/models`]
+  }
+  const params = new URLSearchParams({
+    enable: 'true',
+    size: '1000',
+    current: '1',
+    type: modelType
+  })
+  return [`${rootUrl}/model/page?${params.toString()}`]
 }
 
 const fetchModelEndpoint = async (endpoint) => {
@@ -379,14 +474,14 @@ const fetchModelEndpoint = async (endpoint) => {
   return response.json()
 }
 
-const scanModelPage = async () => {
+const scanModelPage = async (modelType) => {
   const baseUrl = normalizeBaseUrl(formData.baseUrl || getProviderConfig(formData.provider).defaultBaseUrl)
   if (!baseUrl) {
     throw new Error('请先配置 Base URL')
   }
 
   let lastError = null
-  for (const endpoint of getScanEndpoints(baseUrl)) {
+  for (const endpoint of getScanEndpoints(baseUrl, formData.provider, modelType)) {
     try {
       const payload = await fetchModelEndpoint(endpoint)
       const records = extractModelRecords(payload)
@@ -412,8 +507,8 @@ const addScannedModel = (type, model) => {
   return false
 }
 
-const handleScanModels = async () => {
-  isScanningModels.value = true
+const handleScanModels = async (modelType) => {
+  scanningModelType.value = modelType
   scanMessage.value = ''
   try {
     if (formData.provider) {
@@ -426,27 +521,42 @@ const handleScanModels = async () => {
       modelStore.setBaseUrlByProvider(formData.provider, formData.baseUrl)
     }
 
-    const { endpoint, records } = await scanModelPage()
-    const counts = { chat: 0, image: 0, video: 0, skipped: 0 }
+    const { endpoint, records } = await scanModelPage(modelType)
+    const counts = { added: 0, skipped: 0 }
 
     records.forEach((model) => {
-      const type = classifyModel(model)
-      if (!type || !addScannedModel(type, model)) {
+      const type = formData.provider === 'openai' ? classifyModel(model) : modelType
+      if (type !== modelType || !addScannedModel(modelType, model)) {
         counts.skipped += 1
         return
       }
-      counts[type] += 1
+      counts.added += 1
     })
 
-    scanMessage.value = `扫描完成：问答 ${counts.chat}，图片 ${counts.image}，视频 ${counts.video}`
+    scanMessage.value = `${modelTypeLabels[modelType]}扫描完成：新增 ${counts.added} 个`
     console.info('[Model Scan]', { endpoint, counts, total: records.length })
     window.$message?.success(scanMessage.value)
   } catch (err) {
-    scanMessage.value = err.message || '扫描模型失败'
+    scanMessage.value = err.message || `${modelTypeLabels[modelType]}扫描失败`
     window.$message?.error(scanMessage.value)
   } finally {
-    isScanningModels.value = false
+    scanningModelType.value = ''
   }
+}
+
+const handleClearModels = (modelType) => {
+  if (modelType === 'chat') {
+    modelStore.clearCustomChatModels()
+    newChatModel.value = ''
+  } else if (modelType === 'image') {
+    modelStore.clearCustomImageModels()
+    newImageModel.value = ''
+  } else if (modelType === 'video') {
+    modelStore.clearCustomVideoModels()
+    newVideoModel.value = ''
+  }
+  scanMessage.value = ''
+  window.$message?.success(`已清除所有${modelTypeLabels[modelType]}`)
 }
 
 // Handle save | 处理保存
@@ -467,7 +577,6 @@ const handleSave = () => {
 // Handle clear | 处理清除
 const handleClear = () => {
   modelStore.clearApiConfigByProvider(formData.provider)
-  modelStore.clearCustomModels()
   formData.apiKey = ''
   formData.baseUrl = ''
 }
@@ -528,8 +637,16 @@ const handleClear = () => {
 .model-group-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+.model-group-heading,
+.model-group-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .model-group-title {

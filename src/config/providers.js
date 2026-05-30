@@ -37,6 +37,7 @@ export const PROVIDERS = {
         if (params.quality) adapted.quality = params.quality
         if (params.style) adapted.style = params.style
         if (params.image) adapted.image = params.image
+        if (params.mask) adapted.mask = params.mask
         return adapted
       },
       video: (params) => {
@@ -208,6 +209,7 @@ export const PROVIDERS = {
         if (params.quality) adapted.quality = params.quality
         if (params.style) adapted.style = params.style
         if (params.image) adapted.image = params.image
+        if (params.mask) adapted.mask = params.mask
         return adapted
       },
       video: (params) => {

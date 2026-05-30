@@ -6,6 +6,7 @@
 import { ref, reactive, onUnmounted } from 'vue'
 import {
   generateImage,
+  getImageTaskStatus,
   createVideoTask,
   getVideoTaskStatus,
   streamChatCompletions
@@ -48,6 +49,81 @@ export const useApiState = () => {
 
   return { loading, error, status, reset, setLoading, setError, setSuccess }
 }
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+
+const toImageDataUrl = (value) => {
+  if (!value || typeof value !== 'string') return ''
+  if (value.startsWith('data:image/')) return value
+  return `data:image/png;base64,${value}`
+}
+
+const getTaskId = (payload) => {
+  return payload?.task?.id ||
+    payload?.id ||
+    payload?.task_id ||
+    payload?.taskId ||
+    payload?.data?.id ||
+    payload?.data?.task_id ||
+    payload?.data?.taskId ||
+    payload?.result?.id ||
+    payload?.result?.task_id ||
+    payload?.result?.taskId ||
+    ''
+}
+
+const isFailedStatus = (payload) => {
+  const status = String(
+    payload?.status ||
+    payload?.task_status ||
+    payload?.data?.status ||
+    payload?.data?.task_status ||
+    ''
+  ).toLowerCase()
+  return ['failed', 'error', 'cancelled', 'canceled'].includes(status)
+}
+
+const collectImageResults = (payload, results = []) => {
+  if (!payload) return results
+
+  if (Array.isArray(payload)) {
+    payload.forEach(item => collectImageResults(item, results))
+    return results
+  }
+
+  if (typeof payload !== 'object') return results
+
+  if (!isFailedStatus(payload)) {
+    const url = payload.url ||
+      payload.image_url ||
+      payload.imageUrl ||
+      payload.output_url ||
+      payload.outputUrl ||
+      payload.file_url ||
+      payload.public_url ||
+      payload.download_url ||
+      payload.result_url ||
+      ''
+    const b64 = payload.b64_json ||
+      payload.base64 ||
+      payload.image_base64 ||
+      payload.imageBase64 ||
+      ''
+
+    if (url || b64) {
+      results.push({
+        url: url || toImageDataUrl(b64),
+        revisedPrompt: payload.revised_prompt || payload.revisedPrompt || ''
+      })
+    }
+  }
+
+  const nestedKeys = ['data', 'result', 'results', 'items', 'images', 'output', 'outputs', 'content']
+  nestedKeys.forEach((key) => collectImageResults(payload[key], results))
+  return results
+}
+
+const extractFirstImageResult = (payload) => collectImageResults(payload).find(item => item.url) || null
 
 /**
  * Chat composable | 问答组合式函数
@@ -115,12 +191,14 @@ export const useChat = (options = {}) => {
 
         // 使用 modelStore 获取完整 URL
         const chatUrl = modelStore.getChatEndpoint()
-        const endpoint = new URL(chatUrl).pathname
+        const isAbsoluteChatUrl = /^https?:\/\//.test(chatUrl)
+        const endpoint = isAbsoluteChatUrl ? new URL(chatUrl).pathname : chatUrl
+        const baseUrl = isAbsoluteChatUrl ? new URL(chatUrl).origin : ''
 
         for await (const chunk of streamChatCompletions(
           adaptedParams,
           abortController.signal,
-          { baseUrl: new URL(chatUrl).origin, endpoint }
+          { baseUrl, endpoint }
         )) {
           fullResponse += chunk
           currentResponse.value = fullResponse
@@ -168,6 +246,35 @@ export const useImageGeneration = () => {
 
   const images = ref([])
   const currentImage = ref(null)
+  const progress = reactive({
+    attempt: 0,
+    maxAttempts: 60,
+    percentage: 0
+  })
+
+  const pollImageTask = async (pollTaskId, endpoint) => {
+    status.value = 'polling'
+
+    for (let i = 0; i < progress.maxAttempts; i++) {
+      progress.attempt = i + 1
+      progress.percentage = Math.min(95, Math.round((progress.attempt / progress.maxAttempts) * 100))
+
+      const result = await getImageTaskStatus(pollTaskId, { endpoint })
+      if (isFailedStatus(result)) {
+        throw new Error(result.error?.message || result.message || '图片生成失败')
+      }
+
+      const image = extractFirstImageResult(result)
+      if (image) {
+        progress.percentage = 100
+        return [image]
+      }
+
+      await sleep(3000)
+    }
+
+    throw new Error('图片生成超时')
+  }
 
   /**
    * Generate image with fixed params | 固定参数生成图片
@@ -185,13 +292,20 @@ export const useImageGeneration = () => {
       const requestData = {
         model: params.model,
         prompt: params.prompt,
-        size: params.size || modelConfig?.defaultParams?.size || '2048x2048',
         // n: params.n || 1
+      }
+
+      if (params.size && params.size !== 'auto') {
+        requestData.size = params.size
       }
 
       // Add reference image if provided | 添加参考图
       if (params.image) {
         requestData.image = params.image
+      }
+
+      if (params.mask) {
+        requestData.mask = params.mask
       }
 
       // 适配请求参数
@@ -205,18 +319,32 @@ export const useImageGeneration = () => {
 
       // 适配响应数据
       const adaptedData = adaptResponse('image', response)
+      const firstImage = adaptedData.find(item => item.url) || extractFirstImageResult(response)
 
-      images.value = adaptedData
-      currentImage.value = adaptedData[0] || null
-      setSuccess()
-      return adaptedData
+      if (firstImage) {
+        images.value = [firstImage]
+        currentImage.value = firstImage
+        setSuccess()
+        return [firstImage]
+      }
+
+      const taskId = getTaskId(response)
+      if (taskId) {
+        const polledData = await pollImageTask(taskId, modelStore.getImageEndpoint())
+        images.value = polledData
+        currentImage.value = polledData[0] || null
+        setSuccess()
+        return polledData
+      }
+
+      throw new Error('未获取到图片结果')
     } catch (err) {
       setError(err)
       throw err
     }
   }
 
-  return { loading, error, status, images, currentImage, generate, reset }
+  return { loading, error, status, images, currentImage, progress, generate, reset }
 }
 
 /**

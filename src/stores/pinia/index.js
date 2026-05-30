@@ -4,3 +4,4 @@
  */
 
 export { useModelStore } from './models'
+export { useAuthStore } from './auth'

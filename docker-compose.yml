@@ -1,0 +1,71 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_APP_API_BASE_URL: /api
+        VITE_BASE_PATH: /xuegao-canvas/
+    container_name: xuegao-canvas-frontend
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "5173:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/xuegao-canvas/ >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: xuegao-canvas-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: xuegao_canvas
+      POSTGRES_USER: xuegao
+      POSTGRES_PASSWORD: xuegao_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - xuegao_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xuegao -d xuegao_canvas"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: xuegao-canvas-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_MODE: postgres
+      DATABASE_URL: postgresql://xuegao:xuegao_password@postgres:5432/xuegao_canvas
+      HOST: 0.0.0.0
+      PORT: 8787
+      PUBLIC_BASE_URL: http://127.0.0.1:8787
+      ADMIN_EMAIL: zian@bencom.cn
+      ADMIN_PASSWORD: "123456"
+      ADMIN_EMAILS: zian@bencom.cn,zian@bencom.com
+      JWT_SECRET: xuegao-canvas-docker-secret
+    ports:
+      - "8787:8787"
+    volumes:
+      - xuegao_uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  xuegao_postgres_data:
+  xuegao_uploads:

@@ -78,7 +78,7 @@
         <div
           class="flex items-center gap-2 text-xs text-[var(--text-secondary)] py-1 border-t border-[var(--border-color)]">
           <span class="px-2 py-0.5 rounded-full"
-            :class="connectedPrompt ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'">
+            :class="connectedPrompt ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'">
             提示词 {{ connectedPrompt ? '✓' : '○' }}
           </span>
           <span class="px-2 py-0.5 rounded-full"
@@ -165,7 +165,7 @@ const props = defineProps({
 const { updateNodeInternals } = useVueFlow()
 
 // API config state | API 配置状态
-const isConfigured = computed(() => !!modelStore.currentApiKey)
+const isConfigured = computed(() => modelStore.cloudVideoModels.length > 0)
 
 // Video generation hook | 视频生成 hook
 const { loading, error, status, video: generatedVideo, progress, createVideoTaskOnly } = useVideoGeneration()
@@ -344,7 +344,7 @@ const handleGenerate = async () => {
   }
 
   if (!isConfigured.value) {
-    window.$message?.warning('请先配置 API Key')
+    window.$message?.warning('请联系管理员配置云端视频模型')
     isGenerating.value = false
     return
   }
@@ -490,14 +490,15 @@ const handleDelete = () => {
 }
 
 // Initialize on mount | 挂载时初始化
-onMounted(() => {
+onMounted(async () => {
+  await modelStore.loadCloudModels()
   // 检查当前模型是否在可用模型列表中
   const availableModels = modelStore.availableVideoModels
   const isModelAvailable = availableModels.some(m => m.key === localModel.value)
 
   if (!localModel.value || !isModelAvailable) {
     // 使用 store 中的默认模型或第一个可用模型
-    localModel.value = modelStore.selectedVideoModel || availableModels[0]?.key || DEFAULT_VIDEO_MODEL
+    localModel.value = modelStore.selectedVideoModel || availableModels[0]?.key || ''
     updateNode(props.id, { model: localModel.value })
   }
 })

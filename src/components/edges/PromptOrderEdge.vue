@@ -93,7 +93,7 @@ const labelY = computed(() => (props.sourceY + props.targetY) / 2)
 
 // Edge style | 边样式
 const edgeStyle = computed(() => ({
-  stroke: '#10b981',
+  stroke: '#38bdf8',
   strokeWidth: 2,
   ...props.style
 }))

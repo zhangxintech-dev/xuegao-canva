@@ -34,7 +34,9 @@ export const streamChatCompletions = async function* (data, signal, options = {}
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
+      'Authorization': endpoint.startsWith('/api/')
+        ? `Bearer ${localStorage.getItem('app-auth-token') || ''}`
+        : `Bearer ${apiKey}`
     },
     body: JSON.stringify({ ...data, stream: true }),
     signal

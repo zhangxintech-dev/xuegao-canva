@@ -3,6 +3,7 @@
  * Manages projects with localStorage persistence
  */
 import { ref, computed, watch } from 'vue'
+import * as projectsApi from '../api/projects'
 
 // Storage key | 存储键
 const STORAGE_KEY = 'ai-canvas-projects'
@@ -12,6 +13,8 @@ const generateId = () => `project_${Date.now()}_${Math.random().toString(36).sub
 
 // Projects list | 项目列表
 export const projects = ref([])
+export const projectsSyncMode = ref('local')
+export const projectsSyncError = ref(null)
 
 // Current project ID | 当前项目ID
 export const currentProjectId = ref(null)
@@ -85,6 +88,57 @@ const cleanProjectForStorage = (project) => {
   }
 }
 
+const normalizeRemoteProject = (project) => {
+  const data = project?.data || project || {}
+  return {
+    id: data.id,
+    name: data.name || '未命名项目',
+    thumbnail: data.thumbnail || data.thumbnailUrl || data.thumbnail_url || '',
+    createdAt: data.createdAt ? new Date(data.createdAt) : new Date(data.created_at || Date.now()),
+    updatedAt: data.updatedAt ? new Date(data.updatedAt) : new Date(data.updated_at || Date.now()),
+    canvasData: data.canvasData || data.canvas || {
+      nodes: [],
+      edges: [],
+      viewport: { x: 100, y: 50, zoom: 0.8 }
+    }
+  }
+}
+
+const normalizeProjectListResponse = (response) => {
+  const data = response?.data || response || []
+  const list = Array.isArray(data) ? data : data.items || data.projects || []
+  return list.map(normalizeRemoteProject).filter(project => project.id)
+}
+
+const hasAppAuthToken = () => {
+  try {
+    return !!localStorage.getItem('app-auth-token')
+  } catch {
+    return false
+  }
+}
+
+export const loadCloudProjects = async () => {
+  if (!hasAppAuthToken()) return false
+
+  try {
+    const response = await projectsApi.listProjects()
+    const remoteProjects = normalizeProjectListResponse(response)
+    if (remoteProjects.length > 0) {
+      projects.value = remoteProjects
+      saveProjects()
+    }
+    projectsSyncMode.value = 'cloud'
+    projectsSyncError.value = null
+    return true
+  } catch (error) {
+    projectsSyncMode.value = 'local'
+    projectsSyncError.value = error
+    console.warn('Cloud projects unavailable, using local projects:', error.message)
+    return false
+  }
+}
+
 /**
  * Save projects to localStorage | 保存项目到 localStorage
  * Handles QuotaExceededError by compressing data | 通过压缩数据处理配额超限错误
@@ -155,6 +209,17 @@ export const createProject = (name = '未命名项目') => {
   
   projects.value = [newProject, ...projects.value]
   saveProjects()
+
+  if (hasAppAuthToken()) {
+    projectsApi.createProject({
+      id,
+      name,
+      canvasData: newProject.canvasData
+    }).catch(error => {
+      projectsSyncError.value = error
+      console.warn('Failed to create cloud project:', error.message)
+    })
+  }
   
   return id
 }
@@ -179,6 +244,16 @@ export const updateProject = (id, data) => {
   projects.value = [updated, ...projects.value]
   
   saveProjects()
+
+  if (hasAppAuthToken()) {
+    projectsApi.updateProject(id, {
+      ...data,
+      updatedAt: projects.value[0]?.updatedAt
+    }).catch(error => {
+      projectsSyncError.value = error
+      console.warn('Failed to update cloud project:', error.message)
+    })
+  }
   return true
 }
 
@@ -219,6 +294,13 @@ export const updateProjectCanvas = (id, canvasData) => {
   }
   
   saveProjects()
+
+  if (hasAppAuthToken()) {
+    projectsApi.saveProjectCanvas(id, project.canvasData).catch(error => {
+      projectsSyncError.value = error
+      console.warn('Failed to save cloud canvas:', error.message)
+    })
+  }
   return true
 }
 
@@ -239,6 +321,13 @@ export const getProjectCanvas = (id) => {
 export const deleteProject = (id) => {
   projects.value = projects.value.filter(p => p.id !== id)
   saveProjects()
+
+  if (hasAppAuthToken()) {
+    projectsApi.deleteProject(id).catch(error => {
+      projectsSyncError.value = error
+      console.warn('Failed to delete cloud project:', error.message)
+    })
+  }
 }
 
 /**
@@ -322,6 +411,7 @@ export const getSortedProjects = (sortBy = 'updatedAt', order = 'desc') => {
  */
 export const initProjectsStore = () => {
   loadProjects()
+  loadCloudProjects()
   
   // Create sample project if empty | 如果为空则创建示例项目
   if (projects.value.length === 0) {

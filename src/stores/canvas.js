@@ -165,6 +165,17 @@ const checkSignificantChanges = (oldState, newState) => {
   return false
 }
 
+const updateNodeIdCounter = () => {
+  const maxId = nodes.value.reduce((max, node) => {
+    const match = node.id?.match?.(/node_(\d+)/)
+    if (match) {
+      return Math.max(max, parseInt(match[1], 10))
+    }
+    return max
+  }, -1)
+  nodeId = maxId + 1
+}
+
 // Add a new node | 添加新节点
 export const addNode = (type, position = { x: 100, y: 100 }, data = {}) => {
   const id = getNodeId()
@@ -388,6 +399,25 @@ export const clearCanvas = () => {
   nodeId = 0
 }
 
+export const replaceCanvas = (canvasData = {}) => {
+  isRestoring = true
+  nodes.value = JSON.parse(JSON.stringify(canvasData.nodes || []))
+  edges.value = JSON.parse(JSON.stringify(canvasData.edges || []))
+  canvasViewport.value = canvasData.viewport || { x: 100, y: 50, zoom: 0.8 }
+  updateNodeIdCounter()
+
+  history.value = [{
+    nodes: JSON.parse(JSON.stringify(nodes.value)),
+    edges: JSON.parse(JSON.stringify(edges.value))
+  }]
+  historyIndex.value = 0
+
+  setTimeout(() => {
+    isRestoring = false
+    saveProject()
+  }, 100)
+}
+
 // Initialize with sample data | 使用示例数据初始化
 export const initSampleData = () => {
   clearCanvas()
@@ -432,15 +462,7 @@ export const loadProject = (projectId) => {
     edges.value = canvasData.edges || []
     canvasViewport.value = canvasData.viewport || { x: 100, y: 50, zoom: 0.8 }
     
-    // Update node ID counter | 更新节点ID计数器
-    const maxId = nodes.value.reduce((max, node) => {
-      const match = node.id.match(/node_(\d+)/)
-      if (match) {
-        return Math.max(max, parseInt(match[1], 10))
-      }
-      return max
-    }, -1)
-    nodeId = maxId + 1
+    updateNodeIdCounter()
   } else {
     // Empty project | 空项目
     clearCanvas()

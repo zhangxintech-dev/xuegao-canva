@@ -15,3 +15,12 @@ export const generateImage = (data, options = {}) => {
     headers: requestType === 'formdata' ? { 'Content-Type': 'multipart/form-data' } : {}
   })
 }
+
+// 查询图片生成任务状态
+export const getImageTaskStatus = (taskId, options = {}) => {
+  const { endpoint = '/images/generations' } = options
+  return request({
+    url: endpoint.includes('{taskId}') ? endpoint.replace('{taskId}', taskId) : `${endpoint}/${taskId}`,
+    method: 'get'
+  })
+}

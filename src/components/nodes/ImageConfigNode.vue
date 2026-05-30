@@ -75,6 +75,23 @@
             </n-dropdown>
           </div>
         </div>
+        <div class="flex items-center gap-2">
+          <button
+            @click="setAdaptiveSize"
+            class="px-2 py-1 text-xs rounded-lg border transition-colors"
+            :class="localSize === 'auto' ? 'border-[var(--accent-color)] text-[var(--accent-color)] bg-[var(--bg-tertiary)]' : 'border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--accent-color)]'"
+            title="不传固定尺寸，按提示词里的比例生成"
+          >
+            自适应
+          </button>
+          <input
+            v-model="customSizeInput"
+            @blur="applyCustomSize"
+            @keydown.enter="applyCustomSize"
+            placeholder="自定义，如 16:9 / 1024x1536"
+            class="flex-1 min-w-0 px-2 py-1 text-xs bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg outline-none focus:border-[var(--accent-color)] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
+          />
+        </div>
 
         <!-- Model tips | 模型提示 -->
         <div v-if="currentModelConfig?.tips" class="text-xs text-[var(--text-tertiary)] bg-[var(--bg-tertiary)] rounded px-2 py-1">
@@ -85,12 +102,16 @@
         <div
           class="flex items-center gap-2 text-xs text-[var(--text-secondary)] py-1 border-t border-[var(--border-color)]">
           <span class="px-2 py-0.5 rounded-full"
-            :class="connectedPrompts.length > 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'">
+            :class="connectedPrompts.length > 0 ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'">
             提示词 {{ connectedPrompts.length > 0 ? `${connectedPrompts.length}个` : '○' }}
           </span>
           <span class="px-2 py-0.5 rounded-full"
             :class="connectedRefImages.length > 0 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'">
             参考图 {{ connectedRefImages.length > 0 ? `${connectedRefImages.length}张` : '○' }}
+          </span>
+          <span class="px-2 py-0.5 rounded-full"
+            :class="connectedMasks.length > 0 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'">
+            蒙版 {{ connectedMasks.length > 0 ? `${connectedMasks.length}张` : '○' }}
           </span>
         </div>
 
@@ -181,7 +202,7 @@ const props = defineProps({
 const { updateNodeInternals } = useVueFlow()
 
 // API config state | API 配置状态
-const isConfigured = computed(() => !!modelStore.currentApiKey)
+const isConfigured = computed(() => modelStore.hasCloudImageModels)
 
 // Image generation hook | 图片生成 hook
 const { loading, error, images: generatedImages, generate } = useImageGeneration()
@@ -189,8 +210,9 @@ const { loading, error, images: generatedImages, generate } = useImageGeneration
 // Local state | 本地状态
 const showHandleMenu = ref(false)
 const localModel = ref(props.data?.model || DEFAULT_IMAGE_MODEL)
-const localSize = ref(props.data?.size || '2048x2048')
+const localSize = ref(props.data?.size || 'auto')
 const localQuality = ref(props.data?.quality || 'standard')
+const customSizeInput = ref(props.data?.size && props.data.size !== 'auto' ? props.data.size : '')
 
 // Label editing state | Label 编辑状态
 const isEditingLabel = ref(false)
@@ -275,19 +297,21 @@ const hasSizeOptions = computed(() => {
 
 // Display size with label | 显示尺寸（带标签）
 const displaySize = computed(() => {
+  if (localSize.value === 'auto') return '自适应'
   const option = sizeOptions.value.find(o => o.key === localSize.value)
   return option?.label || localSize.value
 })
 
 // Initialize on mount | 挂载时初始化
-onMounted(() => {
+onMounted(async () => {
+  await modelStore.loadCloudModels()
   // 检查当前模型是否在可用模型列表中
   const availableModels = modelStore.availableImageModels
   const isModelAvailable = availableModels.some(m => m.key === localModel.value)
 
   if (!localModel.value || !isModelAvailable) {
     // 使用 store 中的默认模型或第一个可用模型
-    localModel.value = modelStore.selectedImageModel || availableModels[0]?.key || DEFAULT_IMAGE_MODEL
+    localModel.value = modelStore.selectedImageModel || availableModels[0]?.key || ''
     updateNode(props.id, { model: localModel.value })
   }
 
@@ -341,6 +365,12 @@ const resolveTextMentionsForImage = (textNode) => {
   return { resolvedContent, refImages }
 }
 
+const normalizeMaskData = (value) => {
+  if (!value || typeof value !== 'string') return ''
+  if (value.startsWith('data:image/')) return value
+  return `data:image/png;base64,${value}`
+}
+
 // Computed connected prompts (sorted by order) | 计算连接的提示词（按顺序排列）
 const connectedPrompts = computed(() => {
   return getConnectedInputs().prompts
@@ -349,6 +379,10 @@ const connectedPrompts = computed(() => {
 // Computed connected reference images | 计算连接的参考图
 const connectedRefImages = computed(() => {
   return getConnectedInputs().refImages
+})
+
+const connectedMasks = computed(() => {
+  return getConnectedInputs().masks || []
 })
 
 // 已连接的文本节点 ID 列表（用于 @ 提及时过滤）
@@ -398,6 +432,7 @@ const getConnectedInputs = () => {
   // 2. Get edge-connected ImageNodes | 获取边连接的 ImageNode
   const connectedEdges = edges.value.filter(e => e.target === props.id)
   const edgeRefImages = [] // Array of { order, imageData, nodeId } | 参考图数组
+  const edgeMasks = []
 
   for (const edge of connectedEdges) {
     const sourceNode = nodes.value.find(n => n.id === edge.source)
@@ -412,6 +447,11 @@ const getConnectedInputs = () => {
         const baseOrder = edge.data?.imageOrder || 1
         const order = mentionsRefImages.length + baseOrder
         edgeRefImages.push({ order, imageData, nodeId: sourceNode.id })
+
+        const mask = normalizeMaskData(sourceNode.data?.maskData)
+        if (sourceNode.data?.hasInpaintMask && mask) {
+          edgeMasks.push({ order, mask, nodeId: sourceNode.id })
+        }
       }
     }
   }
@@ -422,6 +462,8 @@ const getConnectedInputs = () => {
   // Sort by order | 按顺序排序
   allRefImages.sort((a, b) => a.order - b.order)
   const sortedRefImages = allRefImages.map(r => r.imageData)
+  edgeMasks.sort((a, b) => a.order - b.order)
+  const sortedMasks = edgeMasks.map(r => r.mask)
 
   // 4. If there are @ mentions, use them | 如果有 @ 提及，使用它们
   if (mentionsPrompts.length > 0) {
@@ -433,6 +475,8 @@ const getConnectedInputs = () => {
       prompt: combinedPrompt,
       prompts: mentionsPrompts,
       refImages: sortedRefImages,
+      masks: sortedMasks,
+      masksWithOrder: edgeMasks,
       refImagesWithOrder: allRefImages,
       fromMentions: true
     }
@@ -469,7 +513,7 @@ const getConnectedInputs = () => {
   const combinedPrompt = prompts.map(p => p.content).join('\n\n')
 
   // Use edge-connected refImages (already sorted above) | 使用边连接的参考图（已在上面排序）
-  return { prompt: combinedPrompt, prompts, refImages: sortedRefImages, refImagesWithOrder: allRefImages, fromMentions: false }
+  return { prompt: combinedPrompt, prompts, refImages: sortedRefImages, masks: sortedMasks, masksWithOrder: edgeMasks, refImagesWithOrder: allRefImages, fromMentions: false }
 }
 
 // Handle model selection | 处理模型选择
@@ -524,6 +568,7 @@ const handleQualitySelect = (quality) => {
 // Handle size selection | 处理尺寸选择
 const handleSizeSelect = (size) => {
   localSize.value = size
+  customSizeInput.value = size
   updateNode(props.id, { size })
 }
 
@@ -532,9 +577,25 @@ const updateSize = () => {
   updateNode(props.id, { size: localSize.value })
 }
 
+const setAdaptiveSize = () => {
+  localSize.value = 'auto'
+  customSizeInput.value = ''
+  updateNode(props.id, { size: 'auto' })
+}
+
+const applyCustomSize = () => {
+  const value = customSizeInput.value.trim()
+  if (!value) return
+  localSize.value = value
+  updateNode(props.id, { size: value })
+}
+
 const normalizeGenerationOptions = () => {
+  if (localSize.value === 'auto') return
+
   const validSizes = getModelSizeOptions(localModel.value, localQuality.value)
-  if (validSizes.length > 0 && !validSizes.some(o => o.key === localSize.value)) {
+  const isCustomSize = localSize.value && !validSizes.some(o => o.key === localSize.value)
+  if (validSizes.length > 0 && !isCustomSize && !validSizes.some(o => o.key === localSize.value)) {
     localSize.value = validSizes.find(o => o.key === '1024x1024')?.key || validSizes[0].key
     updateNode(props.id, { size: localSize.value })
   }
@@ -587,7 +648,7 @@ const hasConnectedImageWithContent = computed(() => {
 // Handle generate action | 处理生成操作
 // mode: 'auto' = 自动判断, 'replace' = 替换现有, 'new' = 新建节点
 const handleGenerate = async (mode = 'auto') => {
-  const { prompt, prompts, refImages, refImagesWithOrder } = getConnectedInputs()
+  const { prompt, prompts, refImages, masks, refImagesWithOrder, masksWithOrder } = getConnectedInputs()
 
   if (!prompt && refImages.length === 0) {
     window.$message?.warning('请连接文本节点（提示词）或图片节点（参考图）')
@@ -604,8 +665,12 @@ const handleGenerate = async (mode = 'auto') => {
     console.log('[ImageConfigNode] 参考图顺序:', refImagesWithOrder.map(r => `${r.order}: ${r.nodeId}`))
   }
 
+  if (masksWithOrder && masksWithOrder.length > 0) {
+    console.log('[ImageConfigNode] 局部重绘蒙版:', masksWithOrder.map(r => `${r.order}: ${r.nodeId}`))
+  }
+
   if (!isConfigured.value) {
-    window.$message?.warning('请先配置 API Key')
+    window.$message?.warning('请联系管理员配置云端图片模型')
     return
   }
 
@@ -671,14 +736,21 @@ const handleGenerate = async (mode = 'auto') => {
     const params = {
       model: localModel.value,
       prompt: prompt,
-      size: localSize.value,
       quality: localQuality.value,
       n: 1
+    }
+
+    if (localSize.value && localSize.value !== 'auto') {
+      params.size = localSize.value
     }
 
     // Add reference image if provided | 如果有参考图则添加
     if (refImages.length > 0) {
       params.image = refImages
+    }
+
+    if (masks?.length > 0) {
+      params.mask = masks.length === 1 ? masks[0] : masks
     }
 
     const result = await generate(params)
@@ -688,7 +760,7 @@ const handleGenerate = async (mode = 'auto') => {
       updateNode(imageNodeId, {
         url: result[0].url,
         loading: false,
-        label: '文生图',
+        label: masks?.length > 0 ? '局部重绘' : '文生图',
         model: localModel.value,
         updatedAt: Date.now()
       })

@@ -117,7 +117,7 @@
               {{ isSplitting ? '拆分中...' : '拆分文本' }}
             </button>
           </div>
-          <div v-if="splitMessage" class="mt-1 text-xs text-green-600 dark:text-green-400">{{ splitMessage }}</div>
+          <div v-if="splitMessage" class="mt-1 text-xs text-sky-600 dark:text-sky-300">{{ splitMessage }}</div>
         </div>
       </div>
 
@@ -159,7 +159,7 @@ const props = defineProps({
 const { updateNodeInternals } = useVueFlow()
 
 // API config state | API 配置状态
-const isApiConfigured = computed(() => !!modelStore.currentApiKey)
+const isApiConfigured = computed(() => modelStore.cloudChatModels.length > 0)
 
 // Local state | 本地状态
 const showHandleMenu = ref(false)
@@ -647,14 +647,15 @@ watch(systemPrompt, (newVal) => {
 })
 
 // Initialize editor content | 初始化 editor 内容
-onMounted(() => {
+onMounted(async () => {
+  await modelStore.loadCloudModels()
   // 检查当前模型是否在可用模型列表中
   const availableModels = modelStore.availableChatModels
   const isModelAvailable = availableModels.some(m => m.key === model.value)
 
   if (!model.value || !isModelAvailable) {
     // 使用 store 中的默认模型或第一个可用模型
-    model.value = modelStore.selectedChatModel || availableModels[0]?.key || 'gpt-4o-mini'
+    model.value = modelStore.selectedChatModel || availableModels[0]?.key || ''
     updateConfig()
   }
 
@@ -764,7 +765,7 @@ const getInputFromConnections = () => {
 // Handle generate | 处理生成
 const handleGenerate = async () => {
   if (!isApiConfigured.value) {
-    window.$message?.warning('请先配置 API Key')
+    window.$message?.warning('请联系管理员配置云端问答模型')
     return
   }
 
